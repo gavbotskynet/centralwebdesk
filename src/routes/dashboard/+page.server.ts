@@ -1,9 +1,7 @@
-import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ locals }) => {
-  if (!locals.auth.userId) {
-    throw redirect(302, '/auth/sign-in');
-  }
+// Auth is handled client-side in +page.svelte
+// This load function just returns empty data
+export const load: PageServerLoad = async () => {
   return {};
 };
