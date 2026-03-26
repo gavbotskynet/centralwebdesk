@@ -9,3 +9,7 @@ node_modules
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .wrangler/
+debug/
+_worker.js
+.svelte-kit/cloudflare/_app/
+.svelte-kit/cloudflare/_worker.js
