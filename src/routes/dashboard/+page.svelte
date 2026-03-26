@@ -1,46 +1,83 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
+  import { requireAuth } from '$lib/auth';
+
+  let loading = $state(true);
+  let userEmail = $state('');
+
+  onMount(async () => {
+    const ok = await requireAuth();
+    if (!ok) return;
+
+    // Load Clerk to get user info
+    const { Clerk } = await import('@clerk/clerk-js');
+    const clerk = new Clerk(import.meta.env.VITE_PUBLIC_CLERK_PUBLISHABLE_KEY);
+    await clerk.load();
+    userEmail = clerk.user?.primaryEmailAddress?.emailAddress ?? '';
+    loading = false;
+  });
 </script>
 
 <svelte:head>
   <title>Dashboard - Central Web Desk</title>
 </svelte:head>
 
-<section class="dashboard">
-  <h1>Welcome to your Desk</h1>
+{#if loading}
+  <p>Loading...</p>
+{:else}
+  <section class="dashboard">
+    <div class="welcome-bar">
+      <h1>Welcome to your Desk</h1>
+      <span class="user-email">{userEmail}</span>
+    </div>
 
-  <div class="quick-actions">
-    <a href="/lists/new" class="card">
-      <span class="icon">📝</span>
-      <h3>New List</h3>
-      <p>Create a new bullet list</p>
-    </a>
-    <a href="/reminders/new" class="card">
-      <span class="icon">⏰</span>
-      <h3>New Reminder</h3>
-      <p>Set a reminder</p>
-    </a>
-    <a href="/files/upload" class="card">
-      <span class="icon">📁</span>
-      <h3>Upload File</h3>
-      <p>Store a file</p>
-    </a>
-  </div>
+    <div class="quick-actions">
+      <a href="/lists/new" class="card">
+        <span class="icon">📝</span>
+        <h3>New List</h3>
+        <p>Create a new bullet list</p>
+      </a>
+      <a href="/reminders/new" class="card">
+        <span class="icon">⏰</span>
+        <h3>New Reminder</h3>
+        <p>Set a reminder</p>
+      </a>
+      <a href="/files/upload" class="card">
+        <span class="icon">📁</span>
+        <h3>Upload File</h3>
+        <p>Store a file</p>
+      </a>
+    </div>
 
-  <section class="recent">
-    <h2>Recent Items</h2>
-    <p class="empty-state">No items yet. Create your first list, reminder, or upload a file to get started.</p>
+    <section class="recent">
+      <h2>Recent Items</h2>
+      <p class="empty-state">No items yet. Create your first list, reminder, or upload a file to get started.</p>
+    </section>
   </section>
-</section>
+{/if}
 
 <style>
   .dashboard {
     padding: 2rem 0;
   }
 
+  .welcome-bar {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
   h1 {
     font-size: 2rem;
-    margin-bottom: 2rem;
     color: #1a1a2e;
+  }
+
+  .user-email {
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
   }
 
   .quick-actions {
@@ -57,11 +94,12 @@
     text-decoration: none;
     color: inherit;
     transition: transform 0.2s, box-shadow 0.2s;
+    border: 1px solid var(--color-border);
   }
 
   .card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     text-decoration: none;
   }
 

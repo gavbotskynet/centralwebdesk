@@ -41,9 +41,9 @@
   <h2>Sign in with your existing accounts</h2>
   <p>No new password to remember. Use Google, Apple, or GitHub.</p>
   <div class="provider-icons">
-    <span>G</span>
-    <span>🍎</span>
-    <span>🐙</span>
+    <a href="/auth/sign-in" class="provider-btn" title="Sign in with Google">G</a>
+    <a href="/auth/sign-in" class="provider-btn" title="Sign in with Apple">🍎</a>
+    <a href="/auth/sign-in" class="provider-btn" title="Sign in with GitHub">🐙</a>
   </div>
 </section>
 
@@ -149,9 +149,24 @@
     font-size: 2rem;
   }
 
-  .provider-icons span {
+  .provider-icons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+  }
+
+  .provider-btn {
     background: rgba(255, 255, 255, 0.1);
-    padding: 0.5rem 1rem;
+    padding: 0.75rem 1.5rem;
     border-radius: 8px;
+    font-size: 1.25rem;
+    color: white;
+    text-decoration: none;
+    transition: background 0.2s;
+  }
+
+  .provider-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    text-decoration: none;
   }
 </style>

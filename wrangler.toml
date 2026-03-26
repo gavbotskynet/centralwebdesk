@@ -1,6 +1,6 @@
 name = "centralwebdesk"
+main = ".svelte-kit/cloudflare/_worker.js"
 compatibility_date = "2026-03-25"
-pages_build_output_dir = ".svelte-kit/output/client"
 
 [[d1_databases]]
 binding = "DB"
