@@ -1,5 +1,25 @@
 <script lang="ts">
-  import { SignUp } from 'svelte-clerk';
+  const publishableKey = import.meta.env.VITE_PUBLIC_CLERK_PUBLISHABLE_KEY;
+  
+  async function initClerk() {
+    const { Clerk } = await import('@clerk/clerk-js');
+    const clerk = new Clerk(publishableKey);
+    await clerk.load();
+    
+    if (clerk.user) {
+      window.location.href = '/dashboard';
+      return;
+    }
+    
+    clerk.mountSignUp(document.getElementById('clerk-sign-up'), {
+      routing: 'path',
+      path: '/auth/sign-up',
+      afterSignInUrl: '/dashboard',
+      afterSignUpUrl: '/dashboard'
+    });
+  }
+  
+  initClerk();
 </script>
 
 <svelte:head>
@@ -7,7 +27,7 @@
 </svelte:head>
 
 <div class="auth-container">
-  <SignUp routing="path" path="/auth/sign-up" />
+  <div id="clerk-sign-up"></div>
 </div>
 
 <style>

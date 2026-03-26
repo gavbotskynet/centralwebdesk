@@ -1,28 +1,38 @@
 import { createClerkClient } from '@clerk/clerk-sdk-node';
 import type { Handle } from '@sveltejs/kit';
+import { CLERK_SECRET_KEY } from '$env/static/private';
 
 const clerkClient = createClerkClient({
-  secretKey: process.env.CLERK_SECRET_KEY
+  secretKey: CLERK_SECRET_KEY
 });
+
+const publicRoutes = [
+  '/',
+  '/auth/sign-in',
+  '/auth/sign-up',
+  '/auth/callback',
+  '/api/health'
+];
 
 export const handle: Handle = async ({ event, resolve }) => {
   const { pathname } = event.url;
 
   // Allow public routes
-  const publicRoutes = ['/', '/auth/callback', '/api/health'];
-  const isPublic = publicRoutes.some((route) => pathname === route || pathname.startsWith('/auth/'));
+  const isPublic = publicRoutes.some(
+    (route) => pathname === route || pathname.startsWith('/auth/')
+  );
 
   if (isPublic) {
     return resolve(event);
   }
 
-  // Check auth for protected routes
-  const sessionToken = event.request.headers.get('cookie')?.match(/__session=([^;]+)/)?.[1];
+  // Get session from Clerk's cookie
+  const sessionToken = event.cookies.get('__session');
 
   if (!sessionToken) {
-    return new Response(null, {
+    throw new Response(null, {
       status: 302,
-      headers: { Location: '/' }
+      headers: { Location: '/auth/sign-in' }
     });
   }
 
@@ -30,12 +40,13 @@ export const handle: Handle = async ({ event, resolve }) => {
     const session = await clerkClient.verifySession(sessionToken);
     event.locals.auth = {
       userId: session.userId,
-      user: null // User details fetched separately if needed
+      user: null
     };
   } catch {
-    return new Response(null, {
+    event.cookies.delete('__session', { path: '/' });
+    throw new Response(null, {
       status: 302,
-      headers: { Location: '/' }
+      headers: { Location: '/auth/sign-in' }
     });
   }
 

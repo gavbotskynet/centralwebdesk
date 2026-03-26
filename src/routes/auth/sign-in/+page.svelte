@@ -1,5 +1,29 @@
 <script lang="ts">
-  import { SignIn } from 'svelte-clerk';
+  import type { PageData } from './$types';
+
+  // Load Clerk from CDN and mount the sign-in component
+  const publishableKey = import.meta.env.VITE_PUBLIC_CLERK_PUBLISHABLE_KEY;
+  
+  async function initClerk() {
+    const { Clerk } = await import('@clerk/clerk-js');
+    const clerk = new Clerk(publishableKey);
+    await clerk.load();
+    
+    if (clerk.user) {
+      // Already signed in
+      window.location.href = '/dashboard';
+      return;
+    }
+    
+    clerk.mountSignIn(document.getElementById('clerk-sign-in'), {
+      routing: 'path',
+      path: '/auth/sign-in',
+      afterSignInUrl: '/dashboard',
+      afterSignUpUrl: '/dashboard'
+    });
+  }
+  
+  initClerk();
 </script>
 
 <svelte:head>
@@ -7,7 +31,7 @@
 </svelte:head>
 
 <div class="auth-container">
-  <SignIn routing="path" path="/auth/sign-in" />
+  <div id="clerk-sign-in"></div>
 </div>
 
 <style>
