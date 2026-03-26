@@ -1,0 +1,7 @@
+name = "centralwebdesk"
+compatibility_date = "2026-03-25"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "centralwebdesk"
+database_id = "5eaa4d9e-c8ce-44ff-a598-66bff29c8a56"

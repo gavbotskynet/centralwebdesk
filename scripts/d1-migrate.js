@@ -195,7 +195,7 @@ CREATE INDEX IF NOT EXISTS idx_files_user_id ON files(user_id);
     const { writeFileSync } = await import('fs');
     writeFileSync('/tmp/migration.sql', createTableSQL);
 
-    const cmd = `wrangler d1 execute centralwebdesk --account-id ${accountId} --file /tmp/migration.sql --yes`;
+    const cmd = `wrangler d1 execute centralwebdesk --file /tmp/migration.sql --yes`;
     console.log(`\n$ ${cmd}`);
 
     execSync(cmd, { encoding: 'utf-8', stdio: 'inherit' });

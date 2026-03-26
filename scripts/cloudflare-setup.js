@@ -63,23 +63,38 @@ async function main() {
 
   console.log(`Using Cloudflare Account ID: ${accountId}`);
 
-  // Create D1 Database
-  console.log('\n--- Creating D1 Database ---');
-  let d1Result;
+  // Check if D1 Database already exists
+  console.log('\n--- Checking D1 Database ---');
+  let d1Uuid = '';
   try {
-    d1Result = run(`wrangler d1 create centralwebdesk --account-id ${accountId}`);
-    const d1Match = d1Result.match(/"uuid":\s*"([^"]+)"/);
-    if (d1Match) {
-      console.log(`\n✅ D1 Database created with ID: ${d1Match[1]}`);
+    const listOutput = run(`wrangler d1 list`);
+    // Parse table format: | uuid | name | ... | centralwebdesk row has the UUID in first cell
+    const lines = listOutput.split('\n');
+    const dbLine = lines.find(l => l.includes('centralwebdesk'));
+    if (dbLine) {
+      const uuidMatch = dbLine.match(/([a-f0-9-]{36})/);
+      if (uuidMatch) d1Uuid = uuidMatch[1];
     }
-  } catch {
-    console.log('D1 database might already exist, checking...');
+    if (match) {
+      d1Uuid = match[1];
+      console.log(`✅ D1 Database "centralwebdesk" already exists with ID: ${d1Uuid}`);
+    } else {
+      console.log('Creating new D1 database...');
+      const createOutput = run(`wrangler d1 create centralwebdesk`);
+      const uuidMatch = createOutput.match(/"uuid":\s*"([^"]+)"/);
+      if (uuidMatch) {
+        d1Uuid = uuidMatch[1];
+        console.log(`✅ D1 Database created with ID: ${d1Uuid}`);
+      }
+    }
+  } catch (err) {
+    console.log('Could not list D1 databases:', err.message);
   }
 
   // Create R2 Bucket
   console.log('\n--- Creating R2 Bucket ---');
   try {
-    run(`wrangler r2 bucket create centralwebdesk-files --account-id ${accountId}`);
+    run(`wrangler r2 bucket create centralwebdesk-files`);
     console.log('✅ R2 Bucket "centralwebdesk-files" created');
   } catch {
     console.log('R2 bucket might already exist, continuing...');
@@ -103,7 +118,7 @@ CLOUDFLARE_ACCOUNT_ID=${accountId}
 CLOUDFLARE_API_TOKEN=${cloudflareToken}
 
 # D1 Database (update UUID after running this script)
-D1_DATABASE_ID=${d1Match ? d1Match[1] : 'your_d1_database_id'}
+D1_DATABASE_ID=${d1Uuid || 'your_d1_database_id'}
 
 # R2 Storage
 R2_ACCESS_KEY_ID=${r2AccessKey}

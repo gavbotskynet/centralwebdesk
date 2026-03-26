@@ -27,7 +27,7 @@
     "drizzle-kit": "^0.30.0"
   },
   "dependencies": {
-    "@clerk/sveltekit": "^0.80.0",
+    "@clerk/clerk-sdk-node": "^5.0.0",
     "@floating-ui/dom": "^1.6.0",
     "drizzle-orm": "^0.40.0"
   },
