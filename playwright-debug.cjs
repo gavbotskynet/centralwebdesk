@@ -10,7 +10,7 @@
 
 const { chromium } = require('playwright');
 
-const BASE = 'https://centralwebdesk.gavbotskynet.workers.dev';
+const BASE = 'https://centralwebdesk.pages.dev';
 const OUTPUT_DIR = '/home/digi/.openclaw/workspace/centralwebdesk/debug';
 
 const fs = require('fs');

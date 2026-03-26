@@ -4,16 +4,19 @@
 
   let loading = $state(true);
   let userEmail = $state('');
+  let isAdminUser = $state(false);
 
   onMount(async () => {
     const ok = await requireAuth();
     if (!ok) return;
 
-    // Load Clerk to get user info
     const { Clerk } = await import('@clerk/clerk-js');
     const clerk = new Clerk(import.meta.env.VITE_PUBLIC_CLERK_PUBLISHABLE_KEY);
     await clerk.load();
+
     userEmail = clerk.user?.primaryEmailAddress?.emailAddress ?? '';
+    const admins = ['gavinpretorius@gmail.com'];
+    isAdminUser = admins.includes(userEmail);
     loading = false;
   });
 </script>
@@ -32,6 +35,13 @@
     </div>
 
     <div class="quick-actions">
+      {#if isAdminUser}
+        <a href="/admin" class="card admin-card">
+          <span class="icon">⚙️</span>
+          <h3>Admin</h3>
+          <p>Manage users and settings</p>
+        </a>
+      {/if}
       <a href="/lists/new" class="card">
         <span class="icon">📝</span>
         <h3>New List</h3>
@@ -117,6 +127,15 @@
   .card p {
     color: var(--color-text-muted);
     font-size: 0.9rem;
+  }
+
+  .admin-card {
+    border-color: #f0c040;
+    background: #fffbf0;
+  }
+
+  .admin-card h3 {
+    color: #b8860b;
   }
 
   .recent h2 {

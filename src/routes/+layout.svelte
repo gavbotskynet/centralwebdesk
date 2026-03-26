@@ -1,6 +1,26 @@
 <script lang="ts">
   import '../app.css';
   let { children } = $props();
+
+  let userEmail = $state('');
+  let isAdminUser = $state(false);
+  let loaded = $state(false);
+
+  $effect(() => {
+    const publishableKey = import.meta.env.VITE_PUBLIC_CLERK_PUBLISHABLE_KEY;
+    if (!publishableKey) return;
+
+    import('@clerk/clerk-js').then(async ({ Clerk }) => {
+      const clerk = new Clerk(publishableKey);
+      await clerk.load();
+
+      const email = clerk.user?.primaryEmailAddress?.emailAddress ?? '';
+      const admins = ['gavinpretorius@gmail.com'];
+      userEmail = email;
+      isAdminUser = admins.includes(email);
+      loaded = true;
+    });
+  });
 </script>
 
 <div class="app-shell">
@@ -8,13 +28,23 @@
     <nav>
       <a href="/" class="logo">Central Web Desk</a>
       <div class="nav-links">
-        <a href="/dashboard">Dashboard</a>
-        <a href="/lists">Lists</a>
-        <a href="/reminders">Reminders</a>
-        <a href="/files">Files</a>
+        {#if userEmail}
+          <a href="/dashboard">Dashboard</a>
+          <a href="/lists">Lists</a>
+          <a href="/reminders">Reminders</a>
+          <a href="/files">Files</a>
+          {#if isAdminUser}
+            <a href="/admin" class="admin-link">Admin</a>
+          {/if}
+        {/if}
       </div>
       <div class="auth-section">
-        <a href="/auth/sign-in">Sign In</a>
+        {#if userEmail}
+          <span class="user-email">{userEmail}</span>
+          <a href="/auth/sign-out">Sign Out</a>
+        {:else}
+          <a href="/auth/sign-in">Sign In</a>
+        {/if}
       </div>
     </nav>
   </header>
@@ -56,6 +86,10 @@
     text-decoration: none;
   }
 
+  .logo:hover {
+    text-decoration: none;
+  }
+
   .nav-links {
     display: flex;
     gap: 1.5rem;
@@ -70,11 +104,36 @@
 
   .nav-links a:hover {
     color: white;
+    text-decoration: none;
+  }
+
+  .admin-link {
+    color: #f0c040 !important;
+    font-weight: 600;
+  }
+
+  .admin-link:hover {
+    color: #ffd700 !important;
+  }
+
+  .auth-section {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
   }
 
   .auth-section a {
     color: #00d4ff;
     text-decoration: none;
+  }
+
+  .auth-section a:hover {
+    text-decoration: underline;
+  }
+
+  .user-email {
+    color: #a0a0a0;
+    font-size: 0.85rem;
   }
 
   main {
