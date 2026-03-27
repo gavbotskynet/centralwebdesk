@@ -15,11 +15,11 @@
   let loadingMore = $state(false);
   let search = $state('');
   let searchTimeout: ReturnType<typeof setTimeout>;
-  let activeTab = $state<'access' | 'admin'>('access');
 
   // UI state
   let actionLoading = $state<string | null>(null);
   let error = $state('');
+  let openDropdown = $state<string | null>(null);
 
   const LIMIT = 20;
 
@@ -186,7 +186,17 @@
   function getInitials(name: string) {
     return name.split(' ').map(p => p[0]).join('').toUpperCase().slice(0, 2) || '??';
   }
+
+  function toggleDropdown(userId: string) {
+    openDropdown = openDropdown === userId ? null : userId;
+  }
+
+  function closeDropdown() {
+    openDropdown = null;
+  }
 </script>
+
+<svelte:window on:click={closeDropdown} />
 
 <svelte:head>
   <title>User Management - Central Web Desk</title>
@@ -227,8 +237,7 @@
         <span>Email</span>
         <span>Joined</span>
         <span>Last Sign In</span>
-        <span>Site Access</span>
-        <span>Admin</span>
+        <span>Actions</span>
       </div>
 
       {#each users as user (user.id)}
@@ -239,69 +248,55 @@
             {:else}
               <div class="avatar avatar-placeholder">{getInitials(user.name)}</div>
             {/if}
-            <span class="user-name" class:strikethrough={!user.hasAccess}>{user.name}</span>
+            <div class="user-info">
+              <span class="user-name" class:strikethrough={!user.hasAccess}>{user.name}</span>
+              <span class="user-role">
+                {#if !user.hasAccess}<span class="badge badge-revoked">Revoked</span>
+                {:else if user.isAdmin}<span class="badge badge-admin">Admin</span>
+                {:else}<span class="badge badge-user">User</span>{/if}
+              </span>
+            </div>
           </div>
           <div class="email-cell">{user.email}</div>
           <div class="date-cell">{formatDate(user.createdAt)}</div>
           <div class="date-cell">{formatDate(user.lastSignInAt)}</div>
-          <div class="access-cell">
-            {#if !user.hasAccess}
-              <span class="badge badge-revoked">Revoked</span>
-              <button
-                class="action-btn grant-btn"
-                onclick={() => grantAccess(user.id)}
-                disabled={actionLoading === user.id + '_access'}
-              >
-                {#if actionLoading === user.id + '_access'}
-                  ...
+          <div class="actions-cell">
+            <button
+              class="dropdown-trigger"
+              onclick={(e) => { e.stopPropagation(); toggleDropdown(user.id); }}
+              disabled={actionLoading !== null}
+            >
+              ⋮
+            </button>
+            {#if openDropdown === user.id}
+              <div class="dropdown-menu" onclick={(e) => e.stopPropagation()}>
+                {#if user.hasAccess}
+                  <button
+                    class="dropdown-item"
+                    onclick={() => { revokeAccess(user.id); closeDropdown(); }}
+                    disabled={user.email === currentUserEmail || actionLoading !== null}
+                  >Revoke Access</button>
                 {:else}
-                  Grant
+                  <button
+                    class="dropdown-item"
+                    onclick={() => { grantAccess(user.id); closeDropdown(); }}
+                    disabled={actionLoading !== null}
+                  >Grant Access</button>
                 {/if}
-              </button>
-            {:else}
-              <span class="badge badge-active">Active</span>
-              <button
-                class="action-btn revoke-access-btn"
-                onclick={() => revokeAccess(user.id)}
-                disabled={actionLoading === user.id + '_access' || user.email === currentUserEmail}
-                title={user.email === currentUserEmail ? 'Cannot revoke your own access' : 'Revoke site access'}
-              >
-                {#if actionLoading === user.id + '_access'}
-                  ...
+                {#if user.isAdmin}
+                  <button
+                    class="dropdown-item"
+                    onclick={() => { revokeAdmin(user.id); closeDropdown(); }}
+                    disabled={user.email === currentUserEmail || actionLoading !== null}
+                  >Revoke Admin</button>
                 {:else}
-                  Revoke
+                  <button
+                    class="dropdown-item"
+                    onclick={() => { grantAdmin(user.id, user.email); closeDropdown(); }}
+                    disabled={actionLoading !== null}
+                  >Make Admin</button>
                 {/if}
-              </button>
-            {/if}
-          </div>
-          <div class="access-cell">
-            {#if user.isAdmin}
-              <span class="badge badge-admin">Admin</span>
-              <button
-                class="action-btn revoke-btn"
-                onclick={() => revokeAdmin(user.id)}
-                disabled={actionLoading === user.id || user.email === currentUserEmail}
-                title={user.email === currentUserEmail ? 'Cannot revoke your own access' : 'Revoke admin access'}
-              >
-                {#if actionLoading === user.id}
-                  ...
-                {:else}
-                  Revoke
-                {/if}
-              </button>
-            {:else}
-              <span class="badge badge-user">User</span>
-              <button
-                class="action-btn grant-btn"
-                onclick={() => grantAdmin(user.id, user.email)}
-                disabled={actionLoading === user.id}
-              >
-                {#if actionLoading === user.id}
-                  ...
-                {:else}
-                  Grant Admin
-                {/if}
-              </button>
+              </div>
             {/if}
           </div>
         </div>
@@ -412,7 +407,7 @@
 
   .table-header {
     display: grid;
-    grid-template-columns: 2fr 2fr 1.2fr 1.2fr 1.2fr 1.4fr;
+    grid-template-columns: 2fr 2fr 1.2fr 1.2fr 0.6fr;
     gap: 1rem;
     padding: 0.75rem 1rem;
     background: var(--color-surface);
@@ -426,7 +421,7 @@
 
   .table-row {
     display: grid;
-    grid-template-columns: 2fr 2fr 1.2fr 1.2fr 1.2fr 1.4fr;
+    grid-template-columns: 2fr 2fr 1.2fr 1.2fr 0.6fr;
     gap: 1rem;
     padding: 0.85rem 1rem;
     align-items: center;
@@ -470,6 +465,16 @@
     gap: 0.65rem;
   }
 
+  .user-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .user-role {
+    font-size: 0.75rem;
+  }
+
   .avatar {
     width: 32px;
     height: 32px;
@@ -510,10 +515,66 @@
     white-space: nowrap;
   }
 
-  .access-cell {
+  .actions-cell {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    justify-content: center;
+  }
+
+  .dropdown-trigger {
+    background: none;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 0.2rem 0.5rem;
+    font-size: 1rem;
+    cursor: pointer;
+    color: var(--color-text-muted);
+    transition: all 0.15s;
+  }
+
+  .dropdown-trigger:hover:not(:disabled) {
+    background: var(--color-surface);
+    color: var(--color-text);
+  }
+
+  .dropdown-trigger:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .dropdown-menu {
+    position: absolute;
+    right: 0.5rem;
+    top: 100%;
+    background: white;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    z-index: 50;
+    min-width: 150px;
+    overflow: hidden;
+  }
+
+  .dropdown-item {
+    display: block;
+    width: 100%;
+    padding: 0.6rem 1rem;
+    text-align: left;
+    background: none;
+    border: none;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+
+  .dropdown-item:hover:not(:disabled) {
+    background: #f5f5f5;
+  }
+
+  .dropdown-item:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   .badge {
@@ -536,63 +597,10 @@
     border: 1px solid var(--color-border);
   }
 
-  .badge-active {
-    background: #dcfce7;
-    color: #166534;
-    border: 1px solid #bbf7d0;
-  }
-
   .badge-revoked {
     background: #fee2e2;
     color: #991b1b;
     border: 1px solid #fecaca;
-  }
-
-  .action-btn {
-    padding: 0.3rem 0.7rem;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s;
-    border: none;
-    white-space: nowrap;
-  }
-
-  .action-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .grant-btn {
-    background: var(--color-primary);
-    color: #1a1a2e;
-  }
-
-  .grant-btn:hover:not(:disabled) {
-    background: var(--color-primary-hover);
-  }
-
-  .revoke-btn {
-    background: transparent;
-    color: var(--color-error);
-    border: 1px solid var(--color-error);
-  }
-
-  .revoke-btn:hover:not(:disabled) {
-    background: var(--color-error);
-    color: white;
-  }
-
-  .revoke-access-btn {
-    background: transparent;
-    color: #dc2626;
-    border: 1px solid #dc2626;
-  }
-
-  .revoke-access-btn:hover:not(:disabled) {
-    background: #dc2626;
-    color: white;
   }
 
   .empty-state {
