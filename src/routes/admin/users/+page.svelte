@@ -20,6 +20,7 @@
   let actionLoading = $state<string | null>(null);
   let error = $state('');
   let openDropdown = $state<string | null>(null);
+  let dropdownPos = $state<{ x: number; y: number; flipUp: boolean } | null>(null);
 
   const LIMIT = 20;
 
@@ -187,26 +188,28 @@
     return name.split(' ').map(p => p[0]).join('').toUpperCase().slice(0, 2) || '??';
   }
 
-  function toggleDropdown(userId: string) {
-    openDropdown = openDropdown === userId ? null : userId;
+  function toggleDropdown(userId: string, e: MouseEvent) {
+    if (openDropdown === userId) {
+      openDropdown = null;
+      dropdownPos = null;
+      return;
+    }
+    const trigger = e.currentTarget as HTMLElement;
+    const rect = trigger.getBoundingClientRect();
+    const menuHeight = 96;
+    const flipUp = rect.bottom + menuHeight > window.innerHeight;
+    // Position menu below the trigger, aligned to the right edge
+    // x: right edge of trigger (menu aligns right edge here)
+    // y: top of trigger when flipped, bottom of trigger when not
+    const x = rect.right;
+    const y = flipUp ? rect.top - menuHeight : rect.bottom;
+    openDropdown = userId;
+    dropdownPos = { x, y, flipUp };
   }
 
   function closeDropdown() {
     openDropdown = null;
-  }
-
-  // Svelte action: flip menu up if it would overflow the bottom of the viewport
-  function flipUpIfNeeded(node: HTMLElement) {
-    const measure = () => {
-      const rect = node.getBoundingClientRect();
-      if (rect.bottom > window.innerHeight) {
-        node.classList.add('flip-up');
-      } else {
-        node.classList.remove('flip-up');
-      }
-    };
-    // Measure after first render
-    requestAnimationFrame(measure);
+    dropdownPos = null;
   }
 </script>
 
@@ -282,8 +285,13 @@
             >
               ⋮
             </button>
-            {#if openDropdown === user.id}
-              <div class="dropdown-menu" use:flipUpIfNeeded onclick={(e) => e.stopPropagation()}>
+            {#if openDropdown === user.id && dropdownPos}
+              <div
+                class="dropdown-menu"
+                style="position: fixed; right: auto; left: {dropdownPos.x}px; top: {dropdownPos.y}px;"
+                class:flip-up={dropdownPos.flipUp}
+                onclick={(e) => e.stopPropagation()}
+              >
                 {#if user.hasAccess}
                   <button
                     class="dropdown-item"
@@ -534,6 +542,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow: visible;
   }
 
   .dropdown-trigger {
@@ -571,8 +580,7 @@
   }
 
   .dropdown-menu.flip-up {
-    top: auto;
-    bottom: 100%;
+    /* JS sets top directly via inline style */
   }
 
   .dropdown-item {
