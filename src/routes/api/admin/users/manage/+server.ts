@@ -55,5 +55,31 @@ export async function POST({ request }: RequestEvent) {
     return json({ ok: true, action: 'revoke', userId });
   }
 
+  if (action === 'grant_access') {
+    const res = await clerkFetch(`/users/${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ public_metadata: { has_access: true } })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      return json({ error: (err as any)?.message ?? 'Failed to grant access' }, { status: res.status });
+    }
+    return json({ ok: true, action: 'grant_access', userId });
+  }
+
+  if (action === 'revoke_access') {
+    const res = await clerkFetch(`/users/${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ public_metadata: { has_access: false } })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      return json({ error: (err as any)?.message ?? 'Failed to revoke access' }, { status: res.status });
+    }
+    return json({ ok: true, action: 'revoke_access', userId });
+  }
+
   return json({ error: 'Unknown action' }, { status: 400 });
 }

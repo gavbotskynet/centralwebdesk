@@ -15,6 +15,7 @@
   let loadingMore = $state(false);
   let search = $state('');
   let searchTimeout: ReturnType<typeof setTimeout>;
+  let activeTab = $state<'access' | 'admin'>('access');
 
   // UI state
   let actionLoading = $state<string | null>(null);
@@ -121,6 +122,46 @@
     }
   }
 
+  async function grantAccess(userId: string) {
+    actionLoading = userId + '_access';
+    try {
+      const res = await fetch('/api/admin/users/manage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'grant_access', userId })
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error ?? 'Failed to grant access');
+      }
+      users = users.map(u => u.id === userId ? { ...u, hasAccess: true } : u);
+    } catch (e: any) {
+      error = e.message;
+    } finally {
+      actionLoading = null;
+    }
+  }
+
+  async function revokeAccess(userId: string) {
+    actionLoading = userId + '_access';
+    try {
+      const res = await fetch('/api/admin/users/manage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'revoke_access', userId })
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error ?? 'Failed to revoke access');
+      }
+      users = users.map(u => u.id === userId ? { ...u, hasAccess: false } : u);
+    } catch (e: any) {
+      error = e.message;
+    } finally {
+      actionLoading = null;
+    }
+  }
+
   function onSearchInput() {
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(() => loadUsers(true), 400);
@@ -186,22 +227,53 @@
         <span>Email</span>
         <span>Joined</span>
         <span>Last Sign In</span>
-        <span>Access</span>
+        <span>Site Access</span>
+        <span>Admin</span>
       </div>
 
       {#each users as user (user.id)}
-        <div class="table-row" class:is-admin={user.isAdmin}>
+        <div class="table-row" class:no-access={!user.hasAccess} class:is-admin={user.isAdmin}>
           <div class="user-cell">
             {#if user.imageUrl}
               <img src={user.imageUrl} alt="" class="avatar" />
             {:else}
               <div class="avatar avatar-placeholder">{getInitials(user.name)}</div>
             {/if}
-            <span class="user-name">{user.name}</span>
+            <span class="user-name" class:strikethrough={!user.hasAccess}>{user.name}</span>
           </div>
           <div class="email-cell">{user.email}</div>
           <div class="date-cell">{formatDate(user.createdAt)}</div>
           <div class="date-cell">{formatDate(user.lastSignInAt)}</div>
+          <div class="access-cell">
+            {#if !user.hasAccess}
+              <span class="badge badge-revoked">Revoked</span>
+              <button
+                class="action-btn grant-btn"
+                onclick={() => grantAccess(user.id)}
+                disabled={actionLoading === user.id + '_access'}
+              >
+                {#if actionLoading === user.id + '_access'}
+                  ...
+                {:else}
+                  Grant
+                {/if}
+              </button>
+            {:else}
+              <span class="badge badge-active">Active</span>
+              <button
+                class="action-btn revoke-access-btn"
+                onclick={() => revokeAccess(user.id)}
+                disabled={actionLoading === user.id + '_access' || user.email === currentUserEmail}
+                title={user.email === currentUserEmail ? 'Cannot revoke your own access' : 'Revoke site access'}
+              >
+                {#if actionLoading === user.id + '_access'}
+                  ...
+                {:else}
+                  Revoke
+                {/if}
+              </button>
+            {/if}
+          </div>
           <div class="access-cell">
             {#if user.isAdmin}
               <span class="badge badge-admin">Admin</span>
@@ -340,7 +412,7 @@
 
   .table-header {
     display: grid;
-    grid-template-columns: 2fr 2fr 1.2fr 1.2fr 1.6fr;
+    grid-template-columns: 2fr 2fr 1.2fr 1.2fr 1.2fr 1.4fr;
     gap: 1rem;
     padding: 0.75rem 1rem;
     background: var(--color-surface);
@@ -354,7 +426,7 @@
 
   .table-row {
     display: grid;
-    grid-template-columns: 2fr 2fr 1.2fr 1.2fr 1.6fr;
+    grid-template-columns: 2fr 2fr 1.2fr 1.2fr 1.2fr 1.4fr;
     gap: 1rem;
     padding: 0.85rem 1rem;
     align-items: center;
@@ -376,6 +448,20 @@
 
   .table-row.is-admin:hover {
     background: #fff8e8;
+  }
+
+  .table-row.no-access {
+    background: #fef2f2;
+    opacity: 0.7;
+  }
+
+  .table-row.no-access:hover {
+    background: #fee2e2;
+  }
+
+  .strikethrough {
+    text-decoration: line-through;
+    color: var(--color-text-muted);
   }
 
   .user-cell {
@@ -450,6 +536,18 @@
     border: 1px solid var(--color-border);
   }
 
+  .badge-active {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+  }
+
+  .badge-revoked {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+  }
+
   .action-btn {
     padding: 0.3rem 0.7rem;
     border-radius: 6px;
@@ -483,6 +581,17 @@
 
   .revoke-btn:hover:not(:disabled) {
     background: var(--color-error);
+    color: white;
+  }
+
+  .revoke-access-btn {
+    background: transparent;
+    color: #dc2626;
+    border: 1px solid #dc2626;
+  }
+
+  .revoke-access-btn:hover:not(:disabled) {
+    background: #dc2626;
     color: white;
   }
 

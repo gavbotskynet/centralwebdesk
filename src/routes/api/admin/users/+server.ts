@@ -49,7 +49,8 @@ export async function GET({ url }: RequestEvent) {
       imageUrl: user.image_url,
       createdAt: user.created_at,
       lastSignInAt: user.last_sign_in_at,
-      isAdmin: user.public_metadata?.is_admin === true
+      isAdmin: user.public_metadata?.is_admin === true,
+      hasAccess: user.public_metadata?.has_access !== false
     }));
 
     return json({
