@@ -280,7 +280,7 @@
           <div class="actions-cell">
             <button
               class="dropdown-trigger"
-              onclick={(e) => { e.stopPropagation(); toggleDropdown(user.id); }}
+              onclick={(e) => { e.stopPropagation(); toggleDropdown(user.id, e); }}
               disabled={actionLoading !== null}
             >
               ⋮
