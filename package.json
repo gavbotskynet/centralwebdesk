@@ -12,7 +12,8 @@
     "test:ui": "playwright test --ui",
     "cf:setup": "node scripts/cloudflare-setup.js",
     "cf:d1:migrate": "node scripts/d1-migrate.js",
-    "cf:d1:generate": "drizzle-kit generate"
+    "cf:d1:generate": "drizzle-kit generate",
+    "deploy": "npm run build && npx wrangler pages deploy .svelte-kit/cloudflare --project-name=centralwebdesk --branch=main"
   },
   "devDependencies": {
     "@playwright/test": "^1.50.0",
