@@ -14,12 +14,14 @@ fi
 
 cd "$PROJECT_DIR"
 
+# Build ID is set by vite.config.ts via git rev-parse
 echo "Building..."
 npm run build
 
 echo "Deploying..."
 npx wrangler pages deploy .svelte-kit/cloudflare \
   --project-name=centralwebdesk \
-  --branch=main
+  --branch=main \
+  --commit-hash="$BUILD_ID"
 
 echo "Done!"

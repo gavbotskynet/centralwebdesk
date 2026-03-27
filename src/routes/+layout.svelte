@@ -2,6 +2,8 @@
   import '../app.css';
   let { children } = $props();
 
+  const buildId = __BUILD_ID__ ?? 'local';
+
   let userEmail = $state('');
   let isAdminUser = $state(false);
   let loaded = $state(false);
@@ -55,6 +57,9 @@
 
   <footer>
     <p>&copy; {new Date().getFullYear()} Central Web Desk</p>
+    {#if buildId}
+      <p class="build-id">Build {buildId}</p>
+    {/if}
   </footer>
 </div>
 
@@ -145,9 +150,18 @@
   }
 
   footer {
-    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
     padding: 1rem;
     background: #f5f5f5;
     color: #666;
+  }
+
+  .build-id {
+    font-size: 0.75rem;
+    color: #999;
+    font-family: monospace;
   }
 </style>
