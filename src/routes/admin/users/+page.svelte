@@ -20,7 +20,6 @@
   let actionLoading = $state<string | null>(null);
   let error = $state('');
   let openDropdown = $state<string | null>(null);
-  let dropdownFlipUp = $state<string | null>(null);
 
   const LIMIT = 20;
 
@@ -189,25 +188,25 @@
   }
 
   function toggleDropdown(userId: string) {
-    if (openDropdown === userId) {
-      openDropdown = null;
-      return;
-    }
-    openDropdown = userId;
-    // Defer to next tick so the menu is in the DOM before we measure
-    setTimeout(() => {
-      const trigger = document.querySelector(`[data-dropdown-trigger="${userId}"]`);
-      if (trigger) {
-        const rect = trigger.getBoundingClientRect();
-        const menuHeight = 96; // approximate menu height
-        dropdownFlipUp = rect.bottom + menuHeight > window.innerHeight ? userId : null;
-      }
-    }, 0);
+    openDropdown = openDropdown === userId ? null : userId;
   }
 
   function closeDropdown() {
     openDropdown = null;
-    dropdownFlipUp = null;
+  }
+
+  // Svelte action: flip menu up if it would overflow the bottom of the viewport
+  function flipUpIfNeeded(node: HTMLElement) {
+    const measure = () => {
+      const rect = node.getBoundingClientRect();
+      if (rect.bottom > window.innerHeight) {
+        node.classList.add('flip-up');
+      } else {
+        node.classList.remove('flip-up');
+      }
+    };
+    // Measure after first render
+    requestAnimationFrame(measure);
   }
 </script>
 
@@ -278,14 +277,13 @@
           <div class="actions-cell">
             <button
               class="dropdown-trigger"
-              data-dropdown-trigger={user.id}
               onclick={(e) => { e.stopPropagation(); toggleDropdown(user.id); }}
               disabled={actionLoading !== null}
             >
               ⋮
             </button>
             {#if openDropdown === user.id}
-              <div class="dropdown-menu" class:flip-up={dropdownFlipUp === user.id} onclick={(e) => e.stopPropagation()}>
+              <div class="dropdown-menu" use:flipUpIfNeeded onclick={(e) => e.stopPropagation()}>
                 {#if user.hasAccess}
                   <button
                     class="dropdown-item"
