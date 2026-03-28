@@ -1153,7 +1153,7 @@
 
   .bp-header {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 0.75rem;
     margin-bottom: 0.25rem;
     padding-top: 1.5rem;
@@ -1161,7 +1161,7 @@
 
   .bp-title-group {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 0.75rem;
     flex: 1;
     min-width: 0;
@@ -1195,7 +1195,6 @@
     justify-content: center;
     transition: all 0.15s;
     flex-shrink: 0;
-    margin-top: 0.1rem;
     font-style: normal;
     font-family: Georgia, serif;
   }
