@@ -71,6 +71,7 @@
   let newSetName = $state('');
   let sidebarOpen = $state(true);
   let showUnassigned = $state(false);
+  let showInfo = $state(false);
   let deleteDialog = $state<{ open: boolean; setId: string; setName: string }>({
     open: false,
     setId: '',
@@ -733,21 +734,23 @@
     <!-- Main content -->
     <div class="bp-main">
       <header class="bp-header">
-        <button class="sidebar-toggle" onclick={() => sidebarOpen = !sidebarOpen}>
-          {sidebarOpen ? '◀' : '▶'}
-        </button>
-        <div class="bp-heading-row">
-          <h1>{activeSet ? activeSet.name : 'All Bullets'}</h1>
-          {#if activeSetId === null}
-            <button
-              class="toggle-unassigned-btn"
-              class:active={showUnassigned}
-              onclick={() => showUnassigned = !showUnassigned}
-              title="Toggle uncategorized bullets highlight"
-            >
-              {showUnassigned ? 'Showing uncategorized' : 'Show uncategorized'}
-            </button>
-          {/if}
+        <div class="bp-title-group">
+          <button class="sidebar-toggle" onclick={() => sidebarOpen = !sidebarOpen}>
+            {sidebarOpen ? '◀' : '▶'}
+          </button>
+          <div class="bp-heading-row">
+            <h1>{activeSet ? activeSet.name : 'All Bullets'}</h1>
+            {#if activeSetId === null}
+              <button
+                class="toggle-unassigned-btn"
+                class:active={showUnassigned}
+                onclick={() => showUnassigned = !showUnassigned}
+                title="Toggle uncategorized bullets highlight"
+              >
+                {showUnassigned ? 'Showing uncategorized' : 'Show uncategorized'}
+              </button>
+            {/if}
+          </div>
         </div>
         {#if saving}
           <span class="saving-indicator">Saving...</span>
@@ -766,27 +769,38 @@
             + Add bullet
           </button>
         {/if}
+        <button
+          class="info-btn"
+          title="Help & legend"
+          onclick={() => showInfo = !showInfo}
+          aria-label="Toggle help info"
+        >
+          {showInfo ? '✕' : 'i'}
+        </button>
       </header>
 
-      <p class="subtitle">
-        {#if activeSetId === null}
-          Viewing all bullets. Press <kbd>Enter</kbd> for a new bullet.
-        {:else}
-          Press <kbd>Enter</kbd> for a new bullet in this set.
-        {/if}
-        Drag bullets to reorder or change hierarchy — drop <strong>above/below</strong> to reorder, <strong>on a bullet</strong> to make it a child.
-        Use <kbd>Tab</kbd> to indent, <kbd>Shift+Tab</kbd> to outdent.
-      </p>
-
-      <div class="legend">
-        <span class="legend-item"><span class="legend-sym">•</span> note</span>
-        <span class="legend-item"><span class="legend-sym">→</span> task</span>
-        <span class="legend-item"><span class="legend-sym">○</span> event</span>
-        <span class="legend-divider">·</span>
-        <span class="legend-item"><span class="legend-sym" style="color:#888">•</span> open</span>
-        <span class="legend-item"><span class="legend-sym" style="color:#22c55e">✓</span> done</span>
-        <span class="legend-item"><span class="legend-sym" style="color:#f59e0b">→</span> delegated</span>
-      </div>
+      {#if showInfo}
+        <div class="info-panel">
+          <p class="subtitle">
+            {#if activeSetId === null}
+              Viewing all bullets. Press <kbd>Enter</kbd> for a new bullet.
+            {:else}
+              Press <kbd>Enter</kbd> for a new bullet in this set.
+            {/if}
+            Drag bullets to reorder or change hierarchy — drop <strong>above/below</strong> to reorder, <strong>on a bullet</strong> to make it a child.
+            Use <kbd>Tab</kbd> to indent, <kbd>Shift+Tab</kbd> to outdent.
+          </p>
+          <div class="legend">
+            <span class="legend-item"><span class="legend-sym">•</span> note</span>
+            <span class="legend-item"><span class="legend-sym">→</span> task</span>
+            <span class="legend-item"><span class="legend-sym">○</span> event</span>
+            <span class="legend-divider">·</span>
+            <span class="legend-item"><span class="legend-sym" style="color:#888">•</span> open</span>
+            <span class="legend-item"><span class="legend-sym" style="color:#22c55e">✓</span> done</span>
+            <span class="legend-item"><span class="legend-sym" style="color:#f59e0b">→</span> delegated</span>
+          </div>
+        </div>
+      {/if}
 
       <div class="bullet-list" role="list">
         {#each visibleBullets as bullet (bullet.id)}
@@ -1138,15 +1152,24 @@
 
   .bp-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.75rem;
     margin-bottom: 0.25rem;
     padding-top: 1.5rem;
   }
 
+  .bp-title-group {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    flex: 1;
+    min-width: 0;
+  }
+
   .bp-header h1 {
     font-size: 1.75rem;
     color: #1a1a2e;
+    margin: 0;
   }
 
   .bp-heading-row {
@@ -1154,6 +1177,41 @@
     align-items: center;
     gap: 0.75rem;
     flex-wrap: wrap;
+  }
+
+  .info-btn {
+    background: none;
+    border: 1px solid var(--color-border);
+    cursor: pointer;
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+    font-style: normal;
+    font-family: Georgia, serif;
+  }
+
+  .info-btn:hover {
+    background: var(--color-border);
+    color: var(--color-text);
+  }
+
+  .info-panel {
+    margin-bottom: 1rem;
+    animation: fadeIn 0.15s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 
   .sidebar-toggle {
@@ -1573,8 +1631,9 @@
       width: 260px;
     }
 
-    .bp-header {
+    .bp-title-group {
       flex-wrap: wrap;
+      flex: 1;
     }
 
     .bp-heading-row {
