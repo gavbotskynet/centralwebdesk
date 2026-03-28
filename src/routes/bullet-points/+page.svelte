@@ -736,7 +736,19 @@
         <button class="sidebar-toggle" onclick={() => sidebarOpen = !sidebarOpen}>
           {sidebarOpen ? '◀' : '▶'}
         </button>
-        <h1>{activeSet ? activeSet.name : 'All Bullets'}</h1>
+        <div class="bp-heading-row">
+          <h1>{activeSet ? activeSet.name : 'All Bullets'}</h1>
+          {#if activeSetId === null}
+            <button
+              class="toggle-unassigned-btn"
+              class:active={showUnassigned}
+              onclick={() => showUnassigned = !showUnassigned}
+              title="Toggle uncategorized bullets highlight"
+            >
+              {showUnassigned ? 'Showing uncategorized' : 'Show uncategorized'}
+            </button>
+          {/if}
+        </div>
         {#if saving}
           <span class="saving-indicator">Saving...</span>
         {/if}
@@ -752,16 +764,6 @@
             }, 50);
           }}>
             + Add bullet
-          </button>
-        {/if}
-        {#if activeSetId === null}
-          <button
-            class="toggle-unassigned-btn"
-            class:active={showUnassigned}
-            onclick={() => showUnassigned = !showUnassigned}
-            title="Toggle uncategorized bullets highlight"
-          >
-            {showUnassigned ? 'Showing uncategorized' : 'Show uncategorized'}
           </button>
         {/if}
       </header>
@@ -1145,6 +1147,13 @@
   .bp-header h1 {
     font-size: 1.75rem;
     color: #1a1a2e;
+  }
+
+  .bp-heading-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
   }
 
   .sidebar-toggle {
@@ -1562,6 +1571,19 @@
 
     .bp-sidebar.open {
       width: 260px;
+    }
+
+    .bp-header {
+      flex-wrap: wrap;
+    }
+
+    .bp-heading-row {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .toggle-unassigned-btn {
+      margin-top: 0.25rem;
     }
   }
 </style>
