@@ -14,9 +14,19 @@
     const clerk = new Clerk(import.meta.env.VITE_PUBLIC_CLERK_PUBLISHABLE_KEY);
     await clerk.load();
 
+    // Check if user has been revoked (has_access === false in Clerk public_metadata)
+    // This is a real-time check since Clerk restores sessions from its own cookies
+    const hasAccess = clerk.user?.publicMetadata?.has_access;
+    if (hasAccess === false) {
+      // Clear Clerk's session and redirect to sign-in
+      clerk.signOut();
+      window.location.href = '/auth/sign-in?reason=access_revoked';
+      return;
+    }
+
     userEmail = clerk.user?.primaryEmailAddress?.emailAddress ?? '';
-    const admins = ['gavinpretorius@gmail.com'];
-    isAdminUser = admins.includes(userEmail);
+    // Check is_admin from Clerk public_metadata (set via 3-dot menu on admin/users page)
+    isAdminUser = clerk.user?.publicMetadata?.is_admin === true;
     loading = false;
   });
 </script>
@@ -42,10 +52,10 @@
           <p>Manage users and settings</p>
         </a>
       {/if}
-      <a href="/lists/new" class="card">
+      <a href="/bullet-points" class="card">
         <span class="icon">📝</span>
-        <h3>New List</h3>
-        <p>Create a new bullet list</p>
+        <h3>Bullet Points</h3>
+        <p>Capture thoughts, tasks, and ideas</p>
       </a>
       <a href="/reminders/new" class="card">
         <span class="icon">⏰</span>

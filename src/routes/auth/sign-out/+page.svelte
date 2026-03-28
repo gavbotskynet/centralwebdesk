@@ -9,7 +9,12 @@
       await clerk.load();
       await clerk.signOut();
     }
-    window.location.href = '/';
+    // Clear our own session cookie via form action
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/auth/sign-out';
+    document.body.appendChild(form);
+    form.submit();
   });
 </script>
 

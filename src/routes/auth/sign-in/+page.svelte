@@ -1,13 +1,24 @@
 <script lang="ts">
   import { onMount } from 'svelte';
 
+  let { data } = $props();
   let error = $state('');
+  let signupsClosed = $state(false);
 
   onMount(async () => {
     const publishableKey = import.meta.env.VITE_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
     if (!publishableKey) {
       error = 'Clerk key not configured. Set VITE_PUBLIC_CLERK_PUBLISHABLE_KEY in .env';
+      return;
+    }
+
+    // Check if we were redirected here due to access revocation or sign-ups closed
+    const urlParams = new URLSearchParams(window.location.search);
+    const reason = urlParams.get('reason');
+
+    if (reason === 'signups_closed') {
+      signupsClosed = true;
       return;
     }
 
@@ -21,6 +32,19 @@
       return;
     }
 
+    // If redirected due to access revocation, clear the Clerk session first
+    if (reason === 'access_revoked' && clerk.user) {
+      await clerk.signOut();
+      // Clear our own session cookie
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '/auth/sign-out';
+      document.body.appendChild(form);
+      form.submit();
+      // Don't continue - the form submit will redirect
+      return;
+    }
+
     if (clerk.user) {
       // Already signed in → go to dashboard
       window.location.href = '/dashboard';
@@ -31,7 +55,9 @@
       routing: 'path',
       path: '/auth/sign-in',
       afterSignInUrl: '/dashboard',
-      afterSignUpUrl: '/dashboard'
+      afterSignUpUrl: '/dashboard',
+      // When sign-ups are disabled, redirect the Clerk sign-up link to our closed page
+      signUpUrl: data.allowSignups ? '/auth/sign-up' : '/auth/sign-up-closed'
     });
   });
 </script>
@@ -48,10 +74,21 @@
     {#if error}
       <p class="error">{error}</p>
     {/if}
+    {#if signupsClosed}
+      <div class="signups-closed-banner">
+        <span class="icon">🔒</span>
+        <div>
+          <strong>Sign-ups are currently closed</strong>
+          <p>New account creation is disabled. Please sign in to your existing account.</p>
+        </div>
+      </div>
+    {/if}
     <div id="clerk-sign-in"></div>
-    <p class="switch-link">
-      Don't have an account? <a href="/auth/sign-up">Sign up</a>
-    </p>
+    {#if data.allowSignups && !signupsClosed}
+      <p class="switch-link">
+        Don't have an account? <a href="/auth/sign-up">Sign up</a>
+      </p>
+    {/if}
   </div>
 </div>
 
@@ -104,5 +141,37 @@
 
   .switch-link a {
     color: var(--color-primary);
+  }
+
+  .signups-closed-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    background: #fef3c7;
+    border: 1px solid #f59e0b;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    width: 100%;
+    max-width: 400px;
+  }
+
+  .signups-closed-banner .icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+  }
+
+  .signups-closed-banner strong {
+    display: block;
+    color: #92400e;
+    margin-bottom: 0.25rem;
+    font-size: 0.9rem;
+  }
+
+  .signups-closed-banner p {
+    color: #b45309;
+    font-size: 0.8rem;
+    margin: 0;
+    line-height: 1.4;
   }
 </style>

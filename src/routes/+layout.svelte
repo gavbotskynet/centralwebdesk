@@ -1,3 +1,8 @@
+<svelte:head>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>Central Web Desk</title>
+</svelte:head>
+
 <script lang="ts">
   import '../app.css';
   let { children } = $props();
@@ -32,7 +37,7 @@
       <div class="nav-links">
         {#if userEmail}
           <a href="/dashboard">Dashboard</a>
-          <a href="/lists">Lists</a>
+          <a href="/bullet-points">Bullet Points</a>
           <a href="/reminders">Reminders</a>
           <a href="/files">Files</a>
           {#if isAdminUser}
@@ -78,8 +83,8 @@
 
   nav {
     display: flex;
-    align-items: center;
-    gap: 2rem;
+    flex-direction: column;
+    gap: 0.75rem;
     max-width: 1200px;
     margin: 0 auto;
   }
@@ -97,8 +102,8 @@
 
   .nav-links {
     display: flex;
-    gap: 1.5rem;
-    flex: 1;
+    flex-wrap: wrap;
+    gap: 1rem;
   }
 
   .nav-links a {
@@ -124,6 +129,7 @@
   .auth-section {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 1rem;
   }
 
@@ -141,8 +147,22 @@
     font-size: 0.85rem;
   }
 
+  @media (min-width: 640px) {
+    nav {
+      flex-direction: row;
+      align-items: center;
+      gap: 2rem;
+    }
+
+    .auth-section {
+      justify-content: flex-end;
+    }
+  }
+
   main {
     flex: 1;
+    min-height: 0;
+    overflow-y: auto;
     max-width: 1200px;
     margin: 0 auto;
     padding: 2rem;
@@ -150,6 +170,7 @@
   }
 
   footer {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;

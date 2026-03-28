@@ -16,6 +16,22 @@ function clerkFetch(path: string, options?: RequestInit) {
   });
 }
 
+// Merge new metadata fields into existing public_metadata
+async function patchPublicMetadata(userId: string, patch: Record<string, any>) {
+  // First fetch current public_metadata
+  const userRes = await clerkFetch(`/users/${userId}`);
+  if (!userRes.ok) return userRes;
+
+  const user = await userRes.json();
+  const current = user.public_metadata ?? {};
+
+  const merged = { ...current, ...patch };
+  return clerkFetch(`/users/${userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ public_metadata: merged })
+  });
+}
+
 export async function POST({ request }: RequestEvent) {
   if (!CLERK_SECRET_KEY) {
     return json({ error: 'Clerk secret key not configured' }, { status: 500 });
@@ -29,12 +45,7 @@ export async function POST({ request }: RequestEvent) {
   }
 
   if (action === 'grant') {
-    // Update Clerk's public_metadata for the user
-    const res = await clerkFetch(`/users/${userId}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ public_metadata: { is_admin: true } })
-    });
-
+    const res = await patchPublicMetadata(userId, { is_admin: true });
     if (!res.ok) {
       const err = await res.json();
       return json({ error: (err as any)?.message ?? 'Failed to grant admin' }, { status: res.status });
@@ -43,11 +54,7 @@ export async function POST({ request }: RequestEvent) {
   }
 
   if (action === 'revoke') {
-    const res = await clerkFetch(`/users/${userId}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ public_metadata: { is_admin: false } })
-    });
-
+    const res = await patchPublicMetadata(userId, { is_admin: false });
     if (!res.ok) {
       const err = await res.json();
       return json({ error: (err as any)?.message ?? 'Failed to revoke admin' }, { status: res.status });
@@ -56,11 +63,7 @@ export async function POST({ request }: RequestEvent) {
   }
 
   if (action === 'grant_access') {
-    const res = await clerkFetch(`/users/${userId}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ public_metadata: { has_access: true } })
-    });
-
+    const res = await patchPublicMetadata(userId, { has_access: true });
     if (!res.ok) {
       const err = await res.json();
       return json({ error: (err as any)?.message ?? 'Failed to grant access' }, { status: res.status });
@@ -69,11 +72,7 @@ export async function POST({ request }: RequestEvent) {
   }
 
   if (action === 'revoke_access') {
-    const res = await clerkFetch(`/users/${userId}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ public_metadata: { has_access: false } })
-    });
-
+    const res = await patchPublicMetadata(userId, { has_access: false });
     if (!res.ok) {
       const err = await res.json();
       return json({ error: (err as any)?.message ?? 'Failed to revoke access' }, { status: res.status });

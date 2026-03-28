@@ -1,8 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
 
-  const ADMIN_EMAILS = ['gavinpretorius@gmail.com'];
-
   let loading = $state(true);
   let isAdmin = $state(false);
   let currentUserEmail = $state('');
@@ -41,7 +39,7 @@
     }
 
     currentUserEmail = clerk.user.primaryEmailAddress?.emailAddress ?? '';
-    isAdmin = ADMIN_EMAILS.includes(currentUserEmail);
+    isAdmin = clerk.user.publicMetadata?.is_admin === true;
 
     if (!isAdmin) {
       window.location.href = '/dashboard';

@@ -1,8 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
 
-  const ADMIN_EMAILS = ['gavinpretorius@gmail.com'];
-
   let loading = $state(true);
   let userEmail = $state('');
   let isAdmin = $state(false);
@@ -24,7 +22,7 @@
     }
 
     userEmail = clerk.user.primaryEmailAddress?.emailAddress ?? '';
-    isAdmin = ADMIN_EMAILS.includes(userEmail);
+    isAdmin = clerk.user.publicMetadata?.is_admin === true;
 
     if (!isAdmin) {
       window.location.href = '/dashboard';
@@ -51,6 +49,12 @@
         <h3>👥 User Management</h3>
         <p>Manage user access and permissions.</p>
         <a href="/admin/users" class="btn">Manage Users</a>
+      </div>
+
+      <div class="card">
+        <h3>⚙️ Site Settings</h3>
+        <p>Configure global site settings like sign-up access.</p>
+        <a href="/admin/settings" class="btn">Settings</a>
       </div>
 
       <div class="card">
