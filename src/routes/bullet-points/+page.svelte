@@ -746,7 +746,6 @@
                 class:active={showUnassigned}
                 onclick={() => showUnassigned = !showUnassigned}
                 title="Toggle uncategorized bullets highlight"
-                style="margin-left: auto;"
               >
                 {showUnassigned ? 'Showing uncategorized' : 'Show uncategorized'}
               </button>
@@ -1650,6 +1649,8 @@
 
     .toggle-unassigned-btn {
       margin-top: 0.25rem;
+      margin-left: 0;
+      flex-basis: 100%;
     }
 
     .bp-set-heading-row {
