@@ -771,28 +771,25 @@
               >
                 {showUnassigned ? 'Showing uncategorized' : 'Show uncategorized'}
               </button>
+            {:else}
+              <button class="create-in-set-btn" onclick={() => {
+                const b = makeBullet('', 'task', 'open', 0, false, activeSetId);
+                bullets = [...bullets, b];
+                saveBullet(b);
+                loadSets();
+                setTimeout(() => {
+                  const ref = textareaRefs[b.id];
+                  if (ref) { ref.focus(); autoResize(ref); }
+                }, 50);
+              }}>
+                + Add bullet
+              </button>
             {/if}
           </div>
         </div>
         {#if saving}
           <span class="saving-indicator">Saving...</span>
         {/if}
-        <div class="bp-set-heading-row">
-          {#if activeSetId !== null}
-            <button class="create-in-set-btn" onclick={() => {
-              const b = makeBullet('', 'task', 'open', 0, false, activeSetId);
-              bullets = [...bullets, b];
-              saveBullet(b);
-              loadSets();
-              setTimeout(() => {
-                const ref = textareaRefs[b.id];
-                if (ref) { ref.focus(); autoResize(ref); }
-              }, 50);
-            }}>
-              + Add bullet
-            </button>
-          {/if}
-        </div>
         <button
           class="info-btn"
           title="Help & legend"
@@ -1261,8 +1258,6 @@
     cursor: pointer;
     font-size: 0.85rem;
     transition: opacity 0.15s;
-    margin-top: 0.5rem;
-    align-self: flex-start;
   }
 
   .create-in-set-btn:hover {
@@ -1696,7 +1691,7 @@
       flex-basis: 100%;
     }
 
-    .bp-set-heading-row {
+    .create-in-set-btn {
       flex-basis: 100%;
     }
   }
