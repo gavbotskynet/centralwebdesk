@@ -746,6 +746,7 @@
                 class:active={showUnassigned}
                 onclick={() => showUnassigned = !showUnassigned}
                 title="Toggle uncategorized bullets highlight"
+                style="margin-left: auto;"
               >
                 {showUnassigned ? 'Showing uncategorized' : 'Show uncategorized'}
               </button>
