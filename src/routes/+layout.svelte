@@ -10,6 +10,7 @@
   const buildId = __BUILD_ID__ ?? 'local';
 
   let userEmail = $state('');
+  let userName = $state('');
   let isAdminUser = $state(false);
   let loaded = $state(false);
 
@@ -22,8 +23,10 @@
       await clerk.load();
 
       const email = clerk.user?.primaryEmailAddress?.emailAddress ?? '';
+      const firstName = clerk.user?.firstName ?? '';
       const admins = ['gavinpretorius@gmail.com'];
       userEmail = email;
+      userName = firstName || email.split('@')[0];
       isAdminUser = admins.includes(email);
       loaded = true;
     });
@@ -47,7 +50,7 @@
       </div>
       <div class="auth-section">
         {#if userEmail}
-          <span class="user-email">{userEmail}</span>
+          <span class="user-email">{userName}</span>
           <a href="/auth/sign-out">Sign Out</a>
         {:else}
           <a href="/auth/sign-in">Sign In</a>
