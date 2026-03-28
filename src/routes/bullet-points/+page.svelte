@@ -1634,6 +1634,10 @@
       width: 260px;
     }
 
+    .bp-header {
+      flex-wrap: wrap;
+    }
+
     .bp-title-group {
       flex-wrap: wrap;
       flex: 1;
@@ -1646,6 +1650,10 @@
 
     .toggle-unassigned-btn {
       margin-top: 0.25rem;
+    }
+
+    .bp-set-heading-row {
+      flex-basis: 100%;
     }
   }
 </style>
