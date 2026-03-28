@@ -53,10 +53,15 @@
   let saving = $state(false);
   let textareaRefs: Record<string, HTMLTextAreaElement | null> = {};
 
-  // Drag state
+  // Drag state (bullets)
   let draggingId = $state<string | null>(null);
   let dropTargetId = $state<string | null>(null);
   let dropPosition = $state<'above' | 'below' | 'inside' | null>(null); // above/below = reorder, inside = make child
+
+  // Drag state (sets)
+  let draggingSetId = $state<string | null>(null);
+  let dropSetTargetId = $state<string | null>(null);
+  let dropSetPosition = $state<'above' | 'below' | null>(null);
 
   // Set management state
   let renamingSetId = $state<string | null>(null);
@@ -463,6 +468,84 @@
     updateBullet(bullet.id, { collapsed: !bullet.collapsed });
   }
 
+  // ---- Sets drag-and-drop ----
+  function handleSetDragStart(e: DragEvent, s: BulletSet) {
+    draggingSetId = s.id;
+    e.dataTransfer!.effectAllowed = 'move';
+    e.dataTransfer!.setData('text/plain', s.id);
+  }
+
+  function handleSetDragEnd() {
+    draggingSetId = null;
+    dropSetTargetId = null;
+    dropSetPosition = null;
+  }
+
+  function handleSetDragOver(e: DragEvent, s: BulletSet) {
+    e.preventDefault();
+    if (!draggingSetId || draggingSetId === s.id) return;
+    e.dataTransfer!.dropEffect = 'move';
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const relY = e.clientY - rect.top;
+    dropSetTargetId = s.id;
+    dropSetPosition = relY < rect.height / 2 ? 'above' : 'below';
+  }
+
+  function handleSetDragLeave() {
+    dropSetTargetId = null;
+    dropSetPosition = null;
+  }
+
+  async function handleSetDrop(e: DragEvent, targetSet: BulletSet) {
+    e.preventDefault();
+    if (!draggingSetId || draggingSetId === targetSet.id) {
+      handleSetDragEnd();
+      return;
+    }
+
+    const draggedIdx = sets.findIndex((s) => s.id === draggingSetId);
+    const targetIdx = sets.findIndex((s) => s.id === targetSet.id);
+    if (draggedIdx === -1 || targetIdx === -1) {
+      handleSetDragEnd();
+      return;
+    }
+
+    // Remove dragged from current position
+    const draggedSet = sets[draggedIdx];
+    const remaining = sets.filter((s) => s.id !== draggingSetId);
+
+    // Insert at new position
+    let insertAt = targetIdx;
+    if (dropSetPosition === 'below') {
+      insertAt = targetIdx > draggedIdx ? targetIdx : targetIdx + 1;
+    } else {
+      insertAt = targetIdx > draggedIdx ? targetIdx - 1 : targetIdx;
+    }
+    insertAt = Math.max(0, Math.min(insertAt, remaining.length));
+
+    const newSets = [
+      ...remaining.slice(0, insertAt),
+      draggedSet,
+      ...remaining.slice(insertAt),
+    ];
+
+    // Renumber sort_order
+    newSets.forEach((s, i) => (s.sort_order = i));
+    sets = [...newSets];
+
+    // Persist all sort_orders
+    await Promise.all(
+      newSets.map((s) =>
+        apiFetch(`/api/bullet-sets/${s.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ name: s.name, sort_order: s.sort_order }),
+        })
+      )
+    );
+
+    handleSetDragEnd();
+  }
+
   async function moveBulletToSet(bulletId: string, setId: string | null) {
     // Move the bullet and all its descendants to the new set
     const bulletIdx = bullets.findIndex((b) => b.id === bulletId);
@@ -593,7 +676,19 @@
 
         <!-- Individual sets -->
         {#each sets as s (s.id)}
-          <div class="set-item-row" class:active={activeSetId === s.id}>
+          <div
+            class="set-item-row"
+            class:active={activeSetId === s.id}
+            class:dragging-set={draggingSetId === s.id}
+            class:drop-set-above={dropSetTargetId === s.id && dropSetPosition === 'above'}
+            class:drop-set-below={dropSetTargetId === s.id && dropSetPosition === 'below'}
+            draggable="true"
+            ondragstart={(e) => handleSetDragStart(e, s)}
+            ondragend={handleSetDragEnd}
+            ondragover={(e) => handleSetDragOver(e, s)}
+            ondragleave={handleSetDragLeave}
+            ondrop={(e) => handleSetDrop(e, s)}
+          >
             {#if renamingSetId === s.id}
               <input
                 class="rename-input"
@@ -997,6 +1092,22 @@
   .action-btn.danger:hover {
     color: var(--color-error);
     background: rgba(239, 68, 68, 0.1);
+  }
+
+  .set-item-row.dragging-set {
+    opacity: 0.4;
+    background: var(--color-border);
+    cursor: grabbing;
+  }
+
+  .set-item-row.drop-set-above {
+    border-top: 2px solid var(--color-primary);
+    margin-top: -1px;
+  }
+
+  .set-item-row.drop-set-below {
+    border-bottom: 2px solid var(--color-primary);
+    margin-bottom: -1px;
   }
 
   .rename-input {
