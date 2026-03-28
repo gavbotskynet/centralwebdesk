@@ -653,6 +653,9 @@
 {:else}
   <div class="bp-layout">
     <!-- Sidebar -->
+    {#if sidebarOpen}
+      <div class="sidebar-backdrop" onclick={() => sidebarOpen = false} role="presentation"></div>
+    {/if}
     <aside class="bp-sidebar" class:open={sidebarOpen}>
       <div class="sidebar-header">
         <h2>Sets</h2>
@@ -1619,6 +1622,17 @@
   }
 
   @media (max-width: 600px) {
+    .sidebar-backdrop {
+      display: block;
+      position: fixed;
+      top: 4rem;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.3);
+      z-index: 39;
+    }
+
     .bp-sidebar {
       position: fixed;
       top: 4rem;
@@ -1631,6 +1645,10 @@
 
     .bp-sidebar.open {
       width: 260px;
+    }
+
+    .sidebar-backdrop {
+      display: none;
     }
 
     .bp-header {
