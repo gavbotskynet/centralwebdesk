@@ -756,20 +756,22 @@
         {#if saving}
           <span class="saving-indicator">Saving...</span>
         {/if}
-        {#if activeSetId !== null}
-          <button class="create-in-set-btn" onclick={() => {
-            const b = makeBullet('', 'task', 'open', 0, false, activeSetId);
-            bullets = [...bullets, b];
-            saveBullet(b);
-            loadSets();
-            setTimeout(() => {
-              const ref = textareaRefs[b.id];
-              if (ref) { ref.focus(); autoResize(ref); }
-            }, 50);
-          }}>
-            + Add bullet
-          </button>
-        {/if}
+        <div class="bp-set-heading-row">
+          {#if activeSetId !== null}
+            <button class="create-in-set-btn" onclick={() => {
+              const b = makeBullet('', 'task', 'open', 0, false, activeSetId);
+              bullets = [...bullets, b];
+              saveBullet(b);
+              loadSets();
+              setTimeout(() => {
+                const ref = textareaRefs[b.id];
+                if (ref) { ref.focus(); autoResize(ref); }
+              }, 50);
+            }}>
+              + Add bullet
+            </button>
+          {/if}
+        </div>
         <button
           class="info-btn"
           title="Help & legend"
@@ -1230,7 +1232,6 @@
   }
 
   .create-in-set-btn {
-    margin-left: auto;
     background: var(--color-primary);
     color: white;
     border: none;
@@ -1239,6 +1240,8 @@
     cursor: pointer;
     font-size: 0.85rem;
     transition: opacity 0.15s;
+    margin-top: 0.5rem;
+    align-self: flex-start;
   }
 
   .create-in-set-btn:hover {
