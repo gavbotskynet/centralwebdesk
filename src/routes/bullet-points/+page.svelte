@@ -796,7 +796,7 @@
           onclick={() => showInfo = !showInfo}
           aria-label="Toggle help info"
         >
-          {showInfo ? '✕' : 'ᵢ'}
+          {showInfo ? '✕' : 'i'}
         </button>
       </header>
 
@@ -1205,7 +1205,7 @@
     border: 1px solid var(--color-border);
     cursor: pointer;
     color: var(--color-text-muted);
-    font-size: 0.85rem;
+    font-size: 0.9rem;
     font-weight: 400;
     width: 1.6rem;
     height: 1.6rem;
@@ -1215,8 +1215,6 @@
     justify-content: center;
     transition: all 0.15s;
     flex-shrink: 0;
-    font-family: Georgia, 'Times New Roman', serif;
-    vertical-align: middle;
   }
 
   .info-btn:hover {
