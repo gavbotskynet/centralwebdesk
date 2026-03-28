@@ -639,11 +639,30 @@
       });
     }, 50);
   });
+
+  function handleOutsideClick(e: MouseEvent) {
+    if (window.matchMedia('(max-width: 600px)').matches) {
+      const sidebar = document.querySelector('.bp-sidebar');
+      const backdrop = document.querySelector('.sidebar-backdrop');
+      const toggle = document.querySelector('.sidebar-toggle');
+      if (
+        sidebarOpen &&
+        sidebar &&
+        !sidebar.contains(e.target as Node) &&
+        !backdrop?.contains(e.target as Node) &&
+        !toggle?.contains(e.target as Node)
+      ) {
+        sidebarOpen = false;
+      }
+    }
+  }
 </script>
 
 <svelte:head>
   <title>Bullet Points - Central Web Desk</title>
 </svelte:head>
+
+<svelte:window onclick={handleOutsideClick} />
 
 {#if loading}
   <div class="loading">
@@ -1631,6 +1650,7 @@
       bottom: 0;
       background: rgba(0, 0, 0, 0.3);
       z-index: 39;
+      pointer-events: none;
     }
 
     .bp-sidebar {
