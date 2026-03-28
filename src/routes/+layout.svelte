@@ -146,8 +146,9 @@
   }
 
   .user-email {
-    color: #a0a0a0;
+    color: #f0c040;
     font-size: 0.85rem;
+    font-weight: 600;
   }
 
   @media (min-width: 640px) {
