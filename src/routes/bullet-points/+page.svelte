@@ -1676,13 +1676,18 @@
     }
 
     .bp-title-group {
-      flex-wrap: wrap;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0;
       flex: 1;
     }
 
     .bp-heading-row {
       flex: 1;
       min-width: 0;
+      width: 100%;
+      align-items: flex-start;
+      margin-left: 0;
     }
 
     .toggle-unassigned-btn {
