@@ -796,7 +796,11 @@
           onclick={() => showInfo = !showInfo}
           aria-label="Toggle help info"
         >
-          {showInfo ? '✕' : 'i'}
+          {#if showInfo}
+            ✕
+          {:else}
+            <img src="/info-icon.svg" alt="" aria-hidden="true" class="info-icon-img" />
+          {/if}
         </button>
       </header>
 
@@ -1220,6 +1224,13 @@
   .info-btn:hover {
     background: var(--color-border);
     color: var(--color-text);
+  }
+
+  .info-icon-img {
+    width: 1rem;
+    height: 1rem;
+    pointer-events: none;
+    display: block;
   }
 
   .info-panel {
