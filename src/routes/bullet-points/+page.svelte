@@ -1227,8 +1227,8 @@
   }
 
   .info-icon-img {
-    width: 1rem;
-    height: 1rem;
+    width: 1.1rem;
+    height: 1.1rem;
     pointer-events: none;
     display: block;
   }
