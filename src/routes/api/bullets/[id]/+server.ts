@@ -46,7 +46,7 @@ export async function PUT({ params, request, platform, cookies }: RequestEvent) 
         sort_order = COALESCE(?, sort_order),
         collapsed = COALESCE(?, collapsed),
         set_id = COALESCE(?, set_id),
-        parent_id = ?,
+        parent_id = COALESCE(?, parent_id),
         updated_at = unixepoch()
        WHERE id = ? AND user_id = ?`
     )
@@ -58,7 +58,7 @@ export async function PUT({ params, request, platform, cookies }: RequestEvent) 
       sort_order ?? null,
       collapsed ?? null,
       set_id ?? null,
-      parent_id,
+      parent_id ?? null,
       id,
       userId
     )

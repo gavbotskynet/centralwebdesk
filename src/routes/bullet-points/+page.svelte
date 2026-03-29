@@ -253,7 +253,7 @@
 
   async function loadBullets() {
     const data = await apiFetch('/api/bullets');
-    bullets = data.bullets ?? [];
+    bullets = (data.bullets ?? []).sort((a, b) => a.sort_order - b.sort_order);
     if (bullets.length === 0) {
       const b = makeBullet('');
       bullets = [b];
