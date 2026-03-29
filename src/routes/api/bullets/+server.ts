@@ -55,16 +55,12 @@ export async function GET({ url, platform, cookies }: RequestEvent) {
   let bindings: any[];
 
   if (setId === null) {
-    // No filter — return all bullets
-    stmt = 'SELECT * FROM bullets WHERE user_id = ? ORDER BY sort_order ASC, created_at ASC';
-    bindings = [userId];
-  } else if (setId === 'null') {
-    // Explicitly filtering to uncategorized bullets
-    stmt = 'SELECT * FROM bullets WHERE user_id = ? AND set_id IS NULL ORDER BY sort_order ASC, created_at ASC';
+    // Recent view: all bullets, sorted by updated_at DESC (most recent activity first)
+    stmt = 'SELECT * FROM bullets WHERE user_id = ? ORDER BY updated_at DESC';
     bindings = [userId];
   } else {
-    // Specific set
-    stmt = 'SELECT * FROM bullets WHERE user_id = ? AND set_id = ? ORDER BY sort_order ASC, created_at ASC';
+    // Specific set: sort_order primary, updated_at DESC secondary (deterministic even if sort_order ties)
+    stmt = 'SELECT * FROM bullets WHERE user_id = ? AND set_id = ? ORDER BY sort_order ASC, updated_at DESC';
     bindings = [userId, setId];
   }
 
@@ -80,16 +76,17 @@ export async function POST({ request, platform, cookies }: RequestEvent) {
   if (!userId) return json({ error: 'Not authenticated' }, { status: 401 });
 
   const body = await request.json();
-  const { id, content = '', bullet_type = 'task', status = 'open', indent = 0, sort_order = 0, collapsed = false, set_id } = body;
+  const { id, content = '', bullet_type = 'task', status = 'open', indent = 0, sort_order = 0, collapsed = false, set_id, parent_id = null } = body;
 
   if (!id) return json({ error: 'id is required' }, { status: 400 });
+  if (!set_id) return json({ error: 'set_id is required' }, { status: 400 });
 
   await db
     .prepare(
-      `INSERT OR REPLACE INTO bullets (id, user_id, content, bullet_type, status, indent, sort_order, collapsed, set_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch(), unixepoch())`
+      `INSERT OR REPLACE INTO bullets (id, user_id, content, bullet_type, status, indent, sort_order, collapsed, set_id, parent_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch(), unixepoch())`
     )
-    .bind(id, userId, content, bullet_type, status, indent, sort_order, collapsed ? 1 : 0, set_id ?? null)
+    .bind(id, userId, content, bullet_type, status, indent, sort_order, collapsed ? 1 : 0, set_id, parent_id)
     .run();
 
   return json({ ok: true });

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { requireAuth } from '$lib/auth';
+  import { marked } from 'marked';
   import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 
   interface Bullet {
@@ -12,6 +13,8 @@
     sort_order: number;
     collapsed: boolean;
     set_id: string | null;
+    image_url: string | null;
+    parent_id: string | null;
     created_at: number;
     updated_at: number;
   }
@@ -48,9 +51,12 @@
 
   let bullets = $state<Bullet[]>([]);
   let sets = $state<BulletSet[]>([]);
-  let activeSetId = $state<string | null>(null); // null = All Bullets
+  let activeSetId = $state<string | null>(null); // null = Recent view
   let loading = $state(true);
   let saving = $state(false);
+  let uploadingImage = $state(false);
+  let fileInputRef = $state<HTMLInputElement | null>(null);
+  let activeUploadBulletId = $state<string | null>(null); // which bullet's image is being uploaded
   let textareaRefs: Record<string, HTMLTextAreaElement | null> = {};
 
   // Drag state (bullets)
@@ -67,41 +73,59 @@
   let renamingSetId = $state<string | null>(null);
   let renamingValue = $state('');
   let showMoveMenu = $state<string | null>(null); // bullet id
+  let moveMenuView = $state<'actions' | 'sets'>('actions'); // mobile sub-view
   let creatingSet = $state(false);
   let newSetName = $state('');
   let sidebarOpen = $state(true);
-  let showUnassigned = $state(false);
   let showInfo = $state(false);
   let deleteDialog = $state<{ open: boolean; setId: string; setName: string }>({
     open: false,
     setId: '',
     setName: '',
   });
+  let deleteBulletDialog = $state<{ open: boolean; bulletId: string; content: string }>({
+    open: false,
+    bulletId: '',
+    content: '',
+  });
+  let editingBulletId = $state<string | null>(null); // which bullet is being edited (textarea mode)
 
-  // Derived: bullets filtered by active set
-  let filteredBullets = $derived(
-    activeSetId === null ? bullets : bullets.filter((b) => b.set_id === activeSetId)
-  );
+  // Derived: bullets filtered by active set, or last 50 by updated_at in Recent view
+  // The API returns bullets in the right order — no need to re-sort client-side
+  let filteredBullets = $derived.by(() => {
+    if (activeSetId === null) {
+      return bullets.slice(0, 50);
+    }
+    return bullets.filter((b) => b.set_id === activeSetId);
+  });
 
   // Compute visible bullets (respecting collapse)
+  // Algorithm: walk bullets in order, maintain a stack of ancestor scopes.
+  // Each scope: { indent, collapsed }
+  // collapsed=true: this node is collapsed, blocks all its descendants
+  // No "active" flag — instead, we scan ALL ancestors each time (don't break early)
+  // so grandchildren are still caught even after the direct child was blocked.
   let visibleBullets = $derived.by(() => {
     const visible: Bullet[] = [];
-    const hiddenStacks: number[] = [];
+    const stack: { indent: number; collapsed: boolean }[] = [];
     const bulletsToShow = activeSetId === null ? bullets : filteredBullets;
     for (const bullet of bulletsToShow) {
-      if (hiddenStacks.length === 0) {
-        visible.push(bullet);
+      // Exit scopes we've genuinely left (bullet indent <= top scope indent)
+      while (stack.length > 0 && bullet.indent <= stack[stack.length - 1].indent) {
+        stack.pop();
       }
-      const topHidden = hiddenStacks[hiddenStacks.length - 1];
-      if (bullet.indent <= topHidden) {
-        while (hiddenStacks.length > 0 && hiddenStacks[hiddenStacks.length - 1] >= bullet.indent) {
-          hiddenStacks.pop();
+      // Blocked if ANY ancestor scope is collapsed (check all, don't break early)
+      let blocked = false;
+      for (let i = 0; i < stack.length; i++) {
+        if (stack[i].collapsed) {
+          blocked = true;
+          break;
         }
-        visible.push(bullet);
       }
-      if (bullet.collapsed) {
-        hiddenStacks.push(bullet.indent);
-      }
+      if (blocked) continue;
+      visible.push(bullet);
+      // Push scope for visible bullets (collapsed nodes are visible but block children)
+      stack.push({ indent: bullet.indent, collapsed: bullet.collapsed });
     }
     return visible;
   });
@@ -113,6 +137,12 @@
     return crypto.randomUUID();
   }
 
+  function renderMarkdown(text: string): string {
+    const result = marked.parse(text, { async: false, gfm: true, breaks: true }) as string;
+    // Ensure all links open in new tab
+    return result.replace(/<a href="/g, '<a target="_blank" rel="noopener noreferrer" href="');
+  }
+
   async function apiFetch(url: string, opts?: RequestInit) {
     const res = await fetch(url, {
       ...opts,
@@ -121,6 +151,99 @@
     });
     if (!res.ok) throw new Error(`API error ${res.status}`);
     return res.json();
+  }
+
+  /**
+   * Compute parent_id for every bullet in the array by walking in sort_order.
+   * Uses a stack of {id, indent} to track ancestors.
+   * Call this whenever indent changes for any bullet — it recalculates the
+   * entire parent chain for all bullets in the same set.
+   * Returns a new array (does not mutate original).
+   */
+  function recomputeParentIds(bulletList: Bullet[]): Bullet[] {
+    // Group by set, process each set independently
+    const bySet = new Map<string, Bullet[]>();
+    for (const b of bulletList) {
+      if (!bySet.has(b.set_id!)) bySet.set(b.set_id!, []);
+      bySet.get(b.set_id!)!.push({ ...b });
+    }
+
+    const result: Bullet[] = [];
+
+    for (const [, setBullets] of bySet) {
+      // Sort by sort_order (stable)
+      const sorted = setBullets.slice().sort((a, b) => a.sort_order - b.sort_order);
+      // Stack: each entry is { id, indent } for the chain of ancestors
+      // stack[depth] = bullet at that depth; stack is always sorted by depth (0 = root)
+      const stack: { id: string; indent: number }[] = [];
+
+      for (const bullet of sorted) {
+        // Pop to find the correct parent: top of stack must have indent = bullet.indent - 1
+        while (stack.length > 0 && stack[stack.length - 1].indent >= bullet.indent) {
+          stack.pop();
+        }
+        // Parent is top of stack if it has indent = bullet.indent - 1, otherwise null
+        const parentId = (stack.length > 0 && stack[stack.length - 1].indent === bullet.indent - 1)
+          ? stack[stack.length - 1].id
+          : null;
+
+        const idx = bulletList.findIndex((b) => b.id === bullet.id);
+        const original = bulletList[idx];
+        result.push({ ...original, parent_id: parentId });
+
+        // Push this bullet onto the stack as a potential parent
+        stack.push({ id: bullet.id, indent: bullet.indent });
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Change a bullet's indent to newIndent, recompute parent_ids for the whole set,
+   * and persist the changed bullets.
+   */
+  async function changeIndent(bulletId: string, newIndent: number) {
+    const bulletIdx = bullets.findIndex((b) => b.id === bulletId);
+    if (bulletIdx === -1) return;
+    const bullet = bullets[bulletIdx];
+    if (newIndent === bullet.indent) return;
+    if (newIndent < 0) return;
+
+    const setId = bullet.set_id!;
+
+    // Update indent locally
+    bullets[bulletIdx] = { ...bullets[bulletIdx], indent: newIndent, updated_at: Date.now() };
+
+    // Recompute parent_ids for all bullets in the same set
+    const setBullets = bullets.filter((b) => b.set_id === setId);
+    const recomputed = recomputeParentIds(setBullets);
+
+    // Find bullets with changed parent_id or indent
+    const changedIds = new Set<string>();
+    for (const b of recomputed) {
+      const orig = bullets.find((x) => x.id === b.id);
+      if (orig && (orig.parent_id !== b.parent_id || orig.indent !== b.indent)) {
+        changedIds.add(b.id);
+      }
+    }
+
+    // Merge back
+    bullets = bullets.map((b) => {
+      if (changedIds.has(b.id)) return recomputed.find((x) => x.id === b.id)!;
+      return b;
+    });
+
+    // Persist changed bullets
+    await Promise.all(
+      Array.from(changedIds).map((id) => {
+        const b = bullets.find((x) => x.id === id)!;
+        return apiFetch(`/api/bullets/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ indent: b.indent, parent_id: b.parent_id }),
+        });
+      })
+    );
   }
 
   async function loadSets() {
@@ -138,7 +261,7 @@
     }
   }
 
-  function makeBullet(content: string, type = 'task', status = 'open', indent = 0, collapsed = false, setId: string | null = null): Bullet {
+  function makeBullet(content: string, type = 'task', status = 'open', indent = 0, collapsed = false, setId: string | null = null, parentId: string | null = null): Bullet {
     const now = Date.now();
     return {
       id: uuid(),
@@ -149,6 +272,8 @@
       sort_order: bullets.length,
       collapsed,
       set_id: setId,
+      image_url: null,
+      parent_id: parentId,
       created_at: now,
       updated_at: now,
     };
@@ -175,6 +300,76 @@
       method: 'PUT',
       body: JSON.stringify(patch),
     });
+  }
+
+  function triggerImageUpload(bulletId: string) {
+    activeUploadBulletId = bulletId;
+    fileInputRef?.click();
+  }
+
+  async function handleImageFileChange(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file || !activeUploadBulletId) return;
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif'];
+    if (!allowedTypes.includes(file.type)) {
+      alert('Unsupported file type. Please use JPEG, PNG, GIF, WebP, or AVIF.');
+      input.value = '';
+      activeUploadBulletId = null;
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      alert('File too large. Maximum size is 10MB.');
+      input.value = '';
+      activeUploadBulletId = null;
+      return;
+    }
+
+    uploadingImage = true;
+    try {
+      const res = await fetch(`/api/bullets/${activeUploadBulletId}/image`, {
+        method: 'POST',
+        credentials: 'include',
+        body: file,
+        headers: { 'Content-Type': file.type },
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Upload failed' }));
+        alert(err.error ?? 'Upload failed');
+        return;
+      }
+
+      const data = await res.json();
+      // Update local bullet with new image
+      const idx = bullets.findIndex((b) => b.id === activeUploadBulletId);
+      if (idx !== -1) {
+        bullets[idx] = { ...bullets[idx], image_url: data.image_url, updated_at: Date.now() };
+        bullets = [...bullets];
+      }
+    } catch (err) {
+      alert('Upload failed: ' + (err as Error).message);
+    } finally {
+      uploadingImage = false;
+      activeUploadBulletId = null;
+      input.value = '';
+    }
+  }
+
+  async function deleteBulletImage(bulletId: string) {
+    if (!confirm('Remove this image?')) return;
+    try {
+      await fetch(`/api/bullets/${bulletId}/image`, { method: 'DELETE', credentials: 'include' });
+      const idx = bullets.findIndex((b) => b.id === bulletId);
+      if (idx !== -1) {
+        bullets[idx] = { ...bullets[idx], image_url: null, updated_at: Date.now() };
+        bullets = [...bullets];
+      }
+    } catch (err) {
+      alert('Failed to remove image: ' + (err as Error).message);
+    }
   }
 
   async function deleteBullet(id: string) {
@@ -239,7 +434,7 @@
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       const textarea = e.target as HTMLTextAreaElement;
-      // Read live value from DOM — oninput hasn't fired yet for the last keystroke
+      // Read live value from DOM - oninput hasn't fired yet for the last keystroke
       const liveContent = textarea.value;
       const cursorPos = textarea.selectionStart;
       const before = liveContent.slice(0, cursorPos);
@@ -269,13 +464,52 @@
       loadSets();
     } else if (e.key === 'Tab') {
       e.preventDefault();
-      if (e.shiftKey) {
-        if (bullet.indent > 0) {
-          updateBullet(bullet.id, { indent: bullet.indent - 1 });
+      const newIndent = e.shiftKey
+        ? Math.max(0, bullet.indent - 1)
+        : bullet.indent + 1;
+
+      if (newIndent === bullet.indent) return;
+
+      const setId = bullet.set_id!;
+
+      // Update indent locally
+      const bulletIdx = bullets.findIndex((b) => b.id === bullet.id);
+      if (bulletIdx === -1) return;
+
+      bullets[bulletIdx] = { ...bullets[bulletIdx], indent: newIndent, updated_at: Date.now() };
+
+      // Recompute parent_ids for all bullets in the same set
+      const setBullets = bullets.filter((b) => b.set_id === setId);
+      const recomputed = recomputeParentIds(setBullets);
+
+      // Find bullets with changed parent_id or changed indent
+      const changedBullets: Bullet[] = [];
+      for (const b of recomputed) {
+        const orig = bullets.find((x) => x.id === b.id);
+        if (!orig) continue;
+        if (orig.parent_id !== b.parent_id || orig.indent !== b.indent) {
+          changedBullets.push(b);
         }
-      } else {
-        updateBullet(bullet.id, { indent: bullet.indent + 1 });
       }
+
+      // Merge recomputed bullets back into main list
+      const changedIds = new Set(changedBullets.map((b) => b.id));
+      bullets = bullets.map((b) => {
+        if (changedIds.has(b.id)) {
+          return recomputed.find((x) => x.id === b.id)!;
+        }
+        return b;
+      });
+
+      // Persist changed bullets (fire-and-forget — don't block the thread)
+      Promise.all(
+        changedBullets.map((b) =>
+          apiFetch(`/api/bullets/${b.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ indent: b.indent, parent_id: b.parent_id }),
+          })
+        )
+      );
     } else if (e.key === 'Backspace' && bullet.content === '') {
       e.preventDefault();
       if (bullets.length > 1) {
@@ -379,12 +613,14 @@
 
   async function handleDrop(e: DragEvent, targetBullet: Bullet) {
     e.preventDefault();
-    if (!draggingId || draggingId === targetBullet.id) {
+    // Capture draggingId immediately — dragend fires synchronously after drop and clears it
+    const draggedId = draggingId;
+    if (!draggedId || draggedId === targetBullet.id) {
       handleDragEnd();
       return;
     }
 
-    const draggedIdx = bullets.findIndex((b) => b.id === draggingId);
+    const draggedIdx = bullets.findIndex((b) => b.id === draggedId);
     const targetIdx = bullets.findIndex((b) => b.id === targetBullet.id);
     if (draggedIdx === -1 || targetIdx === -1) {
       handleDragEnd();
@@ -396,7 +632,7 @@
     const allMovedIdxs = [draggedIdx, ...descendants];
     const allMovedIds = new Set(allMovedIdxs.map((i) => bullets[i].id));
 
-    // Determine new indent
+    // Determine new indent (reparent signals a new parent_id we'll compute below)
     let newIndent = dragged.indent;
     if (dropPosition === 'inside') {
       // Make dragged bullet a child of target
@@ -418,14 +654,12 @@
     if (dropPosition === 'above') {
       insertAt = targetIdx;
     } else if (dropPosition === 'below') {
-      // If target is in the dragged branch, insert after the branch
       insertAt = targetIdx > draggedIdx ? targetIdx + 1 : targetIdx;
     } else {
       // inside: insert as first child of target (after target)
       insertAt = targetIdx + 1;
     }
 
-    // Remove target from remaining if it's in dragged branch (handled by filter above, but recalculate insertAt)
     const newBullets = [
       ...remaining.slice(0, insertAt),
       ...draggedBranch,
@@ -435,30 +669,56 @@
     // Renumber sort_order
     newBullets.forEach((b, i) => (b.sort_order = i));
 
-    bullets = newBullets;
+    // Recompute parent_ids for the entire set — this correctly handles:
+    // - The reparented bullet's new parent (from dropPosition='inside')
+    // - All other bullets whose ancestor chain changed
+    const setId = dragged.set_id!;
+    const setBullets = newBullets.filter((b) => b.set_id === setId);
+    const recomputed = recomputeParentIds(newBullets);
 
-    // Persist: update all moved bullets
-    const promises = draggedBranch.map((b) =>
-      apiFetch(`/api/bullets/${b.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ indent: b.indent, sort_order: b.sort_order }),
-      })
-    );
-    // Also update remaining bullets that shifted
-    const remainingUpdated = newBullets
-      .filter((b) => !allMovedIds.has(b.id))
-      .map((b) => ({ ...b, sort_order: b.sort_order }));
-
-    for (const b of remainingUpdated) {
-      const orig = bullets.find((x) => x.id === b.id);
-      if (orig && orig.sort_order !== b.sort_order) {
-        promises.push(
-          apiFetch(`/api/bullets/${b.id}`, {
-            method: 'PUT',
-            body: JSON.stringify({ sort_order: b.sort_order }),
-          })
-        );
+    // Merge back — replace all bullets in the same set with recomputed versions
+    const changedIds = new Set<string>();
+    for (const b of recomputed) {
+      const orig = newBullets.find((x) => x.id === b.id);
+      if (orig && (orig.parent_id !== b.parent_id || orig.indent !== b.indent)) {
+        changedIds.add(b.id);
       }
+    }
+    bullets = newBullets.map((b) => {
+      const r = recomputed.find((x) => x.id === b.id);
+      return r ?? b;
+    });
+
+    // Also update updated_at on every bullet whose sort_order changed
+    // (needed for the ORDER BY sort_order ASC, updated_at DESC secondary sort to be deterministic)
+    const now = Date.now();
+    const sortOrderChanged: Bullet[] = [];
+    for (const b of bullets) {
+      const orig = newBullets.find((x) => x.id === b.id);
+      if (orig && orig.sort_order !== b.sort_order) {
+        b.updated_at = now;
+        sortOrderChanged.push(b);
+      }
+    }
+    bullets = [...bullets];
+
+    // Persist changed bullets (parent_id/indent changes) — include updated_at for correct ordering
+    const promises = Array.from(changedIds).map((id) => {
+      const b = bullets.find((x) => x.id === id)!;
+      return apiFetch(`/api/bullets/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ indent: b.indent, parent_id: b.parent_id, sort_order: b.sort_order, updated_at: now }),
+      });
+    });
+
+    // Also persist sort_order + updated_at for bullets whose sort_order changed
+    for (const b of sortOrderChanged) {
+      promises.push(
+        apiFetch(`/api/bullets/${b.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ sort_order: b.sort_order }),
+        })
+      );
     }
 
     await Promise.all(promises);
@@ -467,6 +727,59 @@
 
   function toggleCollapse(bullet: Bullet) {
     updateBullet(bullet.id, { collapsed: !bullet.collapsed });
+  }
+
+  async function collapseAll() {
+    const toCollapse = bullets
+      .filter((b) => !b.collapsed && hasChildren(b))
+      .map((b) => b.id);
+
+    if (toCollapse.length === 0) return;
+
+    for (const id of toCollapse) {
+      const idx = bullets.findIndex((b) => b.id === id);
+      if (idx !== -1) {
+        bullets[idx] = { ...bullets[idx], collapsed: true, updated_at: Date.now() };
+      }
+    }
+    bullets = [...bullets];
+
+    await Promise.all(
+      toCollapse.map((id) =>
+        apiFetch(`/api/bullets/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ collapsed: true }),
+        })
+      )
+    );
+  }
+
+  async function expandAll() {
+    // Find all bullets that have children and are currently collapsed
+    const toExpand = bullets
+      .filter((b) => b.collapsed && hasChildren(b))
+      .map((b) => b.id);
+
+    if (toExpand.length === 0) return;
+
+    // Update local state immediately
+    for (const id of toExpand) {
+      const idx = bullets.findIndex((b) => b.id === id);
+      if (idx !== -1) {
+        bullets[idx] = { ...bullets[idx], collapsed: false, updated_at: Date.now() };
+      }
+    }
+    bullets = [...bullets];
+
+    // Persist all in parallel
+    await Promise.all(
+      toExpand.map((id) =>
+        apiFetch(`/api/bullets/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ collapsed: false }),
+        })
+      )
+    );
   }
 
   // ---- Sets drag-and-drop ----
@@ -600,6 +913,7 @@
     const textarea = e.target as HTMLTextAreaElement;
     bullet.content = textarea.value;
     saveBullet(bullet);
+    editingBulletId = null;
   }
 
   function startRename(s: BulletSet) {
@@ -689,11 +1003,11 @@
       </div>
 
       <nav class="set-list">
-        <!-- All Bullets -->
+        <!-- Recent -->
         <div class="set-item-row" class:active={activeSetId === null}>
           <button class="set-item" onclick={() => activeSetId = null}>
-            <span class="set-name">All Bullets</span>
-            <span class="set-count">{totalBulletCount}</span>
+            <span class="set-name">Recent</span>
+            <span class="set-count">{Math.min(bullets.length, 50)}</span>
           </button>
         </div>
 
@@ -761,17 +1075,8 @@
             {sidebarOpen ? '◀' : '▶'}
           </button>
           <div class="bp-heading-row">
-            <h1>{activeSet ? activeSet.name : 'All Bullets'}</h1>
-            {#if activeSetId === null}
-              <button
-                class="toggle-unassigned-btn"
-                class:active={showUnassigned}
-                onclick={() => showUnassigned = !showUnassigned}
-                title="Toggle uncategorized bullets highlight"
-              >
-                {showUnassigned ? 'Showing uncategorized' : 'Show uncategorized'}
-              </button>
-            {:else}
+            <h1>{activeSet ? activeSet.name : 'Recent'}</h1>
+            {#if activeSetId !== null}
               <button class="create-in-set-btn" onclick={() => {
                 const b = makeBullet('', 'task', 'open', 0, false, activeSetId);
                 bullets = [...bullets, b];
@@ -783,6 +1088,24 @@
                 }, 50);
               }}>
                 + Add bullet
+              </button>
+            {/if}
+            {#if bullets.some((b) => b.collapsed && hasChildren(b))}
+              <button
+                class="expand-all-btn"
+                onclick={expandAll}
+                title="Expand all collapsed nodes"
+              >
+                ⬇ Expand All
+              </button>
+            {/if}
+            {#if bullets.some((b) => !b.collapsed && hasChildren(b))}
+              <button
+                class="collapse-all-btn"
+                onclick={collapseAll}
+                title="Collapse all parent nodes"
+              >
+                ⬆ Collapse All
               </button>
             {/if}
           </div>
@@ -807,12 +1130,12 @@
       {#if showInfo}
         <div class="info-panel">
           <p class="subtitle">
-            {#if activeSetId === null}
-              Viewing all bullets. Press <kbd>Enter</kbd> for a new bullet.
-            {:else}
+            {#if activeSetId !== null}
               Press <kbd>Enter</kbd> for a new bullet in this set.
+            {:else}
+              Recent bullets — last {filteredBullets.length} updated.
             {/if}
-            Drag bullets to reorder or change hierarchy — drop <strong>above/below</strong> to reorder, <strong>on a bullet</strong> to make it a child.
+            Drag bullets to reorder or change hierarchy - drop <strong>above/below</strong> to reorder, <strong>on a bullet</strong> to make it a child.
             Use <kbd>Tab</kbd> to indent, <kbd>Shift+Tab</kbd> to outdent.
           </p>
           <div class="legend">
@@ -836,7 +1159,6 @@
             class:drop-above={dropTargetId === bullet.id && dropPosition === 'above'}
             class:drop-below={dropTargetId === bullet.id && dropPosition === 'below'}
             class:drop-inside={dropTargetId === bullet.id && dropPosition === 'inside'}
-            class:unassigned={showUnassigned && bullet.set_id === null}
             role="listitem"
             style="--indent: {bullet.indent}"
             draggable="true"
@@ -881,64 +1203,115 @@
               {STATUS_SYMBOLS[bullet.status]}
             </button>
 
-            <textarea
-              bind:this={textareaRefs[bullet.id]}
-              class="bullet-textarea"
-              rows="1"
-              placeholder="Type a bullet point..."
-              value={bullet.content}
-              oninput={(e) => handleInput(e, bullet)}
-              onkeydown={(e) => handleKeydown(e, bullet, 0)}
-              onblur={(e) => handleBlur(e, bullet)}
-              aria-label="Bullet content"
-            ></textarea>
+            {#if editingBulletId === bullet.id}
+              <textarea
+                bind:this={textareaRefs[bullet.id]}
+                class="bullet-textarea"
+                rows="1"
+                placeholder="Type a bullet point..."
+                value={bullet.content}
+                oninput={(e) => handleInput(e, bullet)}
+                onkeydown={(e) => handleKeydown(e, bullet, 0)}
+                onblur={(e) => handleBlur(e, bullet)}
+                aria-label="Bullet content"
+              ></textarea>
+            {:else}
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div
+                class="bullet-content"
+                onclick={() => { editingBulletId = bullet.id; setTimeout(() => { const ref = textareaRefs[bullet.id]; if (ref) { ref.focus(); autoResize(ref); } }, 0); }}
+              >{@html renderMarkdown(bullet.content) || '<span class="placeholder">Type a bullet point...</span>'}</div>
+            {/if}
 
-            <div class="indent-controls">
+            {#if bullet.image_url}
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div class="bullet-image-wrapper">
+                <a
+                  href="/api/images/{bullet.id}"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Open full image"
+                >
+                  <img
+                    src="/api/images/{bullet.id}"
+                    alt="Bullet attachment"
+                    class="bullet-thumbnail"
+                  />
+                </a>
+                <button
+                  type="button"
+                  class="image-remove-btn"
+                  title="Remove image"
+                  onclick={() => deleteBulletImage(bullet.id)}
+                  aria-label="Remove image"
+                >
+                  ✕
+                </button>
+              </div>
+            {:else}
               <button
                 type="button"
-                class="indent-btn"
-                title="Outdent (Shift+Tab)"
-                onclick={() => bullet.indent > 0 && updateBullet(bullet.id, { indent: bullet.indent - 1 })}
-                disabled={bullet.indent === 0}
-                aria-label="Outdent"
+                class="image-btn"
+                title="Add image"
+                onclick={() => triggerImageUpload(bullet.id)}
+                aria-label="Add image"
               >
-                ‹
+                📷
               </button>
-              <button
-                type="button"
-                class="indent-btn"
-                title="Indent (Tab)"
-                onclick={() => updateBullet(bullet.id, { indent: bullet.indent + 1 })}
-                aria-label="Indent"
-              >
-                ›
-              </button>
-            </div>
+            {/if}
 
             <!-- Move to set menu -->
             <div class="move-menu-wrapper">
               <button
                 type="button"
                 class="kebab-btn bullet-kebab"
-                title="Move to set"
-                onclick={() => showMoveMenu = showMoveMenu === bullet.id ? null : bullet.id}
+                title="Actions"
+                onclick={() => { showMoveMenu = showMoveMenu === bullet.id ? null : bullet.id; moveMenuView = 'actions'; }}
               >
                 ⋯
               </button>
               {#if showMoveMenu === bullet.id}
                 <div class="move-menu">
-                  <button class="move-menu-item" onclick={() => moveBulletToSet(bullet.id, null)}>
-                    All Bullets
-                  </button>
-                  {#each sets as s (s.id)}
-                    <button
-                      class="move-menu-item"
-                      class:active-set={bullet.set_id === s.id}
-                      onclick={() => moveBulletToSet(bullet.id, s.id)}
-                    >
-                      {s.name}
+                  {#if moveMenuView === 'actions'}
+                    <button class="move-menu-item" onclick={() => { changeIndent(bullet.id, bullet.indent - 1); showMoveMenu = null; }}>
+                      ‹ Outdent
                     </button>
-                  {/each}
+                    <button class="move-menu-item" onclick={() => { changeIndent(bullet.id, bullet.indent + 1); showMoveMenu = null; }}>
+                      › Indent
+                    </button>
+                    <div class="move-menu-divider"></div>
+                    {#if !bullet.image_url}
+                      <button class="move-menu-item" onclick={() => { triggerImageUpload(bullet.id); showMoveMenu = null; }}>
+                        📷 Add image
+                      </button>
+                    {:else}
+                      <button class="move-menu-item danger" onclick={() => { deleteBulletImage(bullet.id); showMoveMenu = null; }}>
+                        ✕ Remove image
+                      </button>
+                    {/if}
+                    <button class="move-menu-item" onclick={() => moveMenuView = 'sets'}>
+                      Move to Set →
+                    </button>
+                    <button class="move-menu-item danger" onclick={() => { deleteBulletDialog = { open: true, bulletId: bullet.id, content: bullet.content.slice(0, 50) }; showMoveMenu = null; }}>
+                      ✕ Delete bullet
+                    </button>
+                  {:else}
+                    <button class="move-menu-item move-menu-back" onclick={() => moveMenuView = 'actions'}>
+                      ◀ Back
+                    </button>
+                    <div class="move-menu-divider"></div>
+                    {#each sets as s (s.id)}
+                      <button
+                        class="move-menu-item"
+                        class:active-set={bullet.set_id === s.id}
+                        onclick={() => { moveBulletToSet(bullet.id, s.id); showMoveMenu = null; moveMenuView = 'actions'; }}
+                      >
+                        {s.name}
+                      </button>
+                    {/each}
+                  {/if}
                 </div>
               {/if}
             </div>
@@ -947,7 +1320,7 @@
               type="button"
               class="delete-btn"
               title="Delete bullet"
-              onclick={() => deleteBullet(bullet.id)}
+              onclick={() => deleteBulletDialog = { open: true, bulletId: bullet.id, content: bullet.content.slice(0, 50) }}
               aria-label="Delete bullet"
             >
               ✕
@@ -958,6 +1331,15 @@
     </div>
   </div>
 {/if}
+
+<!-- Hidden file input for image uploads -->
+<input
+  bind:this={fileInputRef}
+  type="file"
+  accept="image/jpeg,image/png,image/gif,image/webp,image/avif"
+  style="display:none"
+  onchange={handleImageFileChange}
+/>
 
 <style>
   .bp-layout {
@@ -1368,13 +1750,7 @@
     outline: 1.5px dashed var(--color-primary);
   }
 
-  .bullet-row.unassigned {
-    border-left: 3px solid #f59e0b;
-    margin-left: -3px;
-  }
-
-  .toggle-unassigned-btn {
-    margin-left: auto;
+  .expand-all-btn {
     background: none;
     border: 1px solid var(--color-border);
     cursor: pointer;
@@ -1386,15 +1762,37 @@
     white-space: nowrap;
   }
 
-  .toggle-unassigned-btn:hover {
+  .expand-all-btn:hover {
     background: var(--color-border);
     color: var(--color-text);
   }
 
-  .toggle-unassigned-btn.active {
-    background: #fef3c7;
-    border-color: #f59e0b;
-    color: #92400e;
+  .collapse-all-btn {
+    background: none;
+    border: 1px solid var(--color-border);
+    cursor: pointer;
+    color: var(--color-text-muted);
+    font-size: 0.8rem;
+    padding: 0.3rem 0.75rem;
+    border-radius: 6px;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .collapse-all-btn:hover {
+    background: var(--color-border);
+    color: var(--color-text);
+  }
+
+  @media (max-width: 600px) {
+    .create-in-set-btn {
+      flex-basis: 100%;
+    }
+
+    .expand-all-btn,
+    .collapse-all-btn {
+      flex-basis: 100%;
+    }
   }
 
   .indicator {
@@ -1474,6 +1872,55 @@
     padding-right: 4px;
   }
 
+  /* Rendered bullet content (non-edit mode) */
+  .bullet-content {
+    flex: 1;
+    font-family: inherit;
+    font-size: 1rem;
+    line-height: 1.6;
+    color: #1a1a2e;
+    padding: 0.35rem 4px;
+    min-height: 1.6em;
+    border-radius: 4px;
+    cursor: text;
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .bullet-content:hover {
+    background: rgba(0, 212, 255, 0.03);
+  }
+
+  .bullet-content .placeholder {
+    color: #bbb;
+  }
+
+  .bullet-content a {
+    color: #3b82f6;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .bullet-content a:hover {
+    color: #1d4ed8;
+  }
+
+  .bullet-content strong {
+    font-weight: 600;
+  }
+
+  .bullet-content em {
+    font-style: italic;
+  }
+
+  .bullet-content code {
+    background: rgba(0, 0, 0, 0.06);
+    border-radius: 3px;
+    padding: 0.05em 0.3em;
+    font-size: 0.9em;
+    font-family: 'Fira Code', 'Cascadia Code', monospace;
+  }
+
   .indent-controls {
     display: flex;
     gap: 1px;
@@ -1522,6 +1969,26 @@
   .bullet-row:hover .kebab-btn,
   .bullet-row:hover .delete-btn {
     opacity: 1;
+  }
+
+  /* Desktop: all row actions live in the ⋯ menu — hide the standalone action buttons */
+  @media (min-width: 601px) {
+    .image-btn {
+      display: none;
+    }
+
+    .indent-controls {
+      display: none;
+    }
+
+    .delete-btn {
+      display: none;
+    }
+
+    /* Kebab is always visible on desktop too */
+    .bullet-kebab {
+      opacity: 1;
+    }
   }
 
   .kebab-btn:hover {
@@ -1599,6 +2066,25 @@
     font-weight: 600;
   }
 
+  .move-menu-divider {
+    height: 1px;
+    background: var(--color-border);
+    margin: 0.25rem 0;
+  }
+
+  .move-menu-back {
+    color: var(--color-text-muted);
+    font-size: 0.85rem;
+  }
+
+  .move-menu-item.danger {
+    color: var(--color-error);
+  }
+
+  .move-menu-item.danger:hover {
+    background: rgba(239, 68, 68, 0.1);
+  }
+
   .loading {
     display: flex;
     flex-direction: column;
@@ -1645,7 +2131,33 @@
   }
 
   @media (max-width: 600px) {
+    /* On mobile the ⋯ button is the only always-visible action; indent controls and delete are in the menu */
+    .bullet-kebab {
+      opacity: 1;
+    }
+
+    /* Larger ⋯ tap target on mobile */
+    .bullet-kebab {
+      font-size: 1.3rem;
+      padding: 0.4rem 0.3rem;
+      min-width: 2rem;
+    }
+
+    /* Hide indent controls on mobile — now in the ⋯ menu */
+    .indent-controls {
+      display: none;
+    }
+
+    /* Hide delete button on mobile — now in the ⋯ menu */
+    .delete-btn {
+      display: none;
+    }
+
     .sidebar-backdrop {
+      display: none;
+    }
+
+    .sidebar-backdrop.open {
       display: block;
       position: fixed;
       top: 4rem;
@@ -1654,7 +2166,6 @@
       bottom: 0;
       background: rgba(0, 0, 0, 0.3);
       z-index: 39;
-      pointer-events: none;
     }
 
     .bp-sidebar {
@@ -1669,10 +2180,6 @@
 
     .bp-sidebar.open {
       width: 260px;
-    }
-
-    .sidebar-backdrop {
-      display: none;
     }
 
     .bp-header {
@@ -1694,14 +2201,116 @@
       margin-left: 0;
     }
 
-    .toggle-unassigned-btn {
-      margin-top: 0.25rem;
-      margin-left: 0;
+    .create-in-set-btn {
       flex-basis: 100%;
     }
 
-    .create-in-set-btn {
-      flex-basis: 100%;
+    /* Reclaim horizontal space for bullets */
+    .bp-main {
+      padding-left: 0.5rem;
+      padding-right: 0.5rem;
+    }
+
+    .bp-header {
+      padding-top: 0.75rem;
+      padding-left: 0.5rem;
+      padding-right: 0.5rem;
+    }
+
+    /* Shrink the sidebar toggle button on mobile */
+    .sidebar-toggle {
+      padding: 0.15rem 0.35rem;
+      font-size: 0.7rem;
+    }
+
+    /* Tighter indent on mobile so nested bullets don't overflow */
+    .bullet-row {
+      padding-left: calc(var(--indent, 0) * 1rem);
+    }
+  }
+
+  /* Image attachments */
+  .bullet-image-wrapper {
+    position: relative;
+    display: inline-block;
+    flex-shrink: 0;
+    margin: 0.25rem 0;
+  }
+
+  .bullet-thumbnail {
+    display: block;
+    width: 200px;
+    height: 200px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid var(--color-border);
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+
+  .bullet-thumbnail:hover {
+    opacity: 0.85;
+  }
+
+  .image-remove-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: rgba(0, 0, 0, 0.55);
+    border: none;
+    border-radius: 50%;
+    color: white;
+    cursor: pointer;
+    font-size: 0.65rem;
+    width: 1.3rem;
+    height: 1.3rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.15s;
+    line-height: 1;
+    padding: 0;
+  }
+
+  .bullet-image-wrapper:hover .image-remove-btn {
+    opacity: 1;
+  }
+
+  .image-btn {
+    background: none;
+    border: 1px solid var(--color-border);
+    cursor: pointer;
+    color: #aaa;
+    font-size: 0.9rem;
+    padding: 0.25rem 0.3rem;
+    line-height: 1;
+    border-radius: 4px;
+    transition: background 0.15s, color 0.15s;
+    flex-shrink: 0;
+    min-width: 1.5rem;
+    text-align: center;
+  }
+
+  .bullet-row:hover .image-btn {
+    opacity: 1;
+  }
+
+  .image-btn:hover {
+    background: var(--color-border);
+    color: #555;
+  }
+
+  @media (max-width: 600px) {
+    .image-btn {
+      opacity: 1;
+      font-size: 1rem;
+      padding: 0.3rem 0.4rem;
+    }
+
+    .bullet-thumbnail {
+      width: 120px;
+      height: 120px;
     }
   }
 </style>
@@ -1709,10 +2318,21 @@
 <ConfirmDialog
   open={deleteDialog.open}
   title="Delete set"
-  message="Deleting “{deleteDialog.setName}” will permanently remove all bullets in this set. This cannot be undone."
+  message={'Deleting "' + deleteDialog.setName + '" will permanently remove all bullets in this set. This cannot be undone.'}
   confirmLabel="Delete set"
   cancelLabel="Cancel"
   danger={true}
   onconfirm={() => { deleteSet(deleteDialog.setId); deleteDialog.open = false; }}
   oncancel={() => deleteDialog.open = false}
+/>
+
+<ConfirmDialog
+  open={deleteBulletDialog.open}
+  title="Delete bullet"
+  message={deleteBulletDialog.content ? 'Delete this bullet: "' + deleteBulletDialog.content + '"?' : 'Delete this bullet?'}
+  confirmLabel="Delete bullet"
+  cancelLabel="Cancel"
+  danger={true}
+  onconfirm={() => { deleteBullet(deleteBulletDialog.bulletId); deleteBulletDialog.open = false; }}
+  oncancel={() => deleteBulletDialog.open = false}
 />
